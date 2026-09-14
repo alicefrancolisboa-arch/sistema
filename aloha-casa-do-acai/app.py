@@ -161,6 +161,7 @@ def scan_invoice():
     f=request.files.get('file')
     if not f: return jsonify(error='Envie uma imagem da nota.'),400
     key=os.getenv('GEMINI_API_KEY','')
+    diagnostic = 'A chave Gemini não está configurada no servidor.' if not key else ''
     if key:
         try:
             import urllib.request
@@ -170,14 +171,17 @@ def scan_invoice():
             req=urllib.request.Request('https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key='+key,data=body,headers={'Content-Type':'application/json'})
             data=json.loads(urllib.request.urlopen(req,timeout=25).read())['candidates'][0]['content']['parts'][0]['text'].replace('```json','').replace('```','').strip()
             return jsonify(source='Gemini', data=json.loads(data))
-        except Exception as e: fallback_error=str(e)
+        except Exception as e:
+            # Não expõe a chave nem o conteúdo da nota; informa apenas a classe/HTTP para suporte.
+            code = getattr(e, 'code', None)
+            diagnostic = f'Gemini respondeu HTTP {code}.' if code else f'Falha de conexão Gemini: {type(e).__name__}.'
     try:
         import pytesseract
         from PIL import Image
         f.seek(0); text=pytesseract.image_to_string(Image.open(f),lang='por')
         return jsonify(source='OCR local',data={'supplier':'','items':[],'raw_text':text})
     except Exception:
-        return jsonify(error='Não foi possível ler a nota. Cadastre os itens manualmente.', fallback=True),422
+        return jsonify(error='Não foi possível ler a nota. Cadastre os itens manualmente.', fallback=True, diagnostic=diagnostic),422
 
 if __name__=='__main__':
     init_db(); app.run(host='0.0.0.0',port=5000,debug=True)
