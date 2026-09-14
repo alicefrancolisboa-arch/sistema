@@ -46,6 +46,7 @@ def init_db():
         ('Copo 150 ml','150 ml',10, [{'ingredient':'Açaí tradicional','qty':.13},{'ingredient':'Copo 150 ml','qty':1}]),
         ('Copo 200 ml','200 ml',12, [{'ingredient':'Açaí tradicional','qty':.18},{'ingredient':'Copo 200 ml','qty':1}]),
         ('Bowl 500 ml','500 ml',25, [{'ingredient':'Açaí tradicional','qty':.40},{'ingredient':'Copo 500 ml','qty':1}]),
+        ('Adicional creme de avelã','Adicional',3, [{'ingredient':'Creme de avelã','qty':.03}]),
     ]
     for name, size, price, items in menu_recipes:
         con.execute('INSERT OR IGNORE INTO recipes(name,size,price,margin,items) VALUES(?,?,?,?,?)',(name,size,price,120,json.dumps(items)))
