@@ -1,0 +1,16 @@
+/* Aplicativo Android: navegação inferior e área útil total em telas pequenas. */
+.hero-action{margin-top:20px;background:#ffc20e!important;color:#481044!important;box-shadow:none!important}
+@media(max-width:800px){
+  body{padding-bottom:76px;background:#fffaf2}
+  aside{position:fixed!important;z-index:20;bottom:0;left:0;width:100%!important;height:70px!important;padding:7px 6px!important;display:block!important;background:linear-gradient(90deg,#310a3d,#5a0b59)!important;box-shadow:0 -3px 18px #25052b44!important}
+  aside .brand,aside .store{display:none!important}
+  aside nav{height:100%;display:grid!important;grid-template-columns:repeat(5,1fr);gap:2px!important}
+  aside nav button{height:100%;padding:4px 1px!important;display:flex!important;flex-direction:column;justify-content:center;gap:2px!important;font-size:18px!important;border-radius:9px!important}
+  aside nav button b{display:block!important;font-size:8px!important;font-weight:700;line-height:1.05;text-align:center}
+  aside nav button.active{background:#f9c416!important;color:#3e0b41!important}
+  main{margin-left:0!important;padding:0 13px 15px!important}
+  header{height:76px!important}header p{font-size:9px!important}header h1{font-size:23px!important}.profile{display:none!important}
+  #menu{display:none!important}.hero{border-radius:16px!important;min-height:205px!important;padding:26px 21px!important}.hero h2{font-size:27px!important}.hero span{font-size:14px!important}.hero-badge{width:65px!important;height:65px!important;font-size:25px!important}
+  .cards{gap:10px!important;margin:14px 0!important}.cards article{padding:17px!important}.cards strong{font-size:27px!important}.split{gap:12px!important}.panel{padding:16px!important}.heading{margin:9px 0 15px!important}.heading h2{font-size:25px!important}.heading p{font-size:13px!important}.heading .primary{font-size:12px!important;padding:11px 12px!important}
+  .sale-layout{gap:12px!important}.modal{padding:10px!important}.modalbox{max-height:84vh!important;padding:21px!important}.upload{padding:30px 18px!important}.recipegrid{gap:10px!important}
+}

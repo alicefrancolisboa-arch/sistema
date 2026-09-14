@@ -85,9 +85,14 @@ def ingredient_detail(item_id):
 
 @app.get('/api/recipes')
 def recipes():
-    out=rows('SELECT * FROM recipes WHERE active=1 ORDER BY name')
-    for x in out: x['items']=json.loads(x['items']); x['cost']=round(recipe_cost(x),2); x['suggested']=round(x['cost']*(1+x['margin']/100),2)
-    return jsonify(out)
+    try:
+        out=rows('SELECT * FROM recipes WHERE active=1 ORDER BY name')
+        for x in out:
+            x['items']=json.loads(x['items']); x['cost']=round(recipe_cost(x),2); x['suggested']=round(x['cost']*(1+float(x.get('margin') or 100)/100),2)
+        return jsonify(out)
+    except Exception as error:
+        app.logger.exception('Erro ao carregar receitas')
+        return jsonify(error='Não foi possível carregar os produtos.', diagnostic=type(error).__name__),500
 
 @app.post('/api/recipes')
 def add_recipe():
