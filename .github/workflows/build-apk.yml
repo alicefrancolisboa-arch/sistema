@@ -1,7 +1,7 @@
 name: Gerar APK Aloha
 on:
   push:
-    paths: ['aloha-casa-do-acai/android/**', 'aloha-casa-do-acai/static/mobile.css', 'aloha-casa-do-acai/templates/index.html']
+    paths: ['.github/workflows/build-apk.yml', 'aloha-casa-do-acai/android/**', 'aloha-casa-do-acai/static/mobile.css', 'aloha-casa-do-acai/templates/index.html']
   workflow_dispatch:
 jobs:
   apk:
