@@ -37,6 +37,18 @@ def init_db():
         r500=json.dumps([{'ingredient':'Açaí tradicional','qty':0.38},{'ingredient':'Leite em pó','qty':0.03},{'ingredient':'Granola','qty':0.04},{'ingredient':'Copo 500 ml','qty':1}])
         r300=json.dumps([{'ingredient':'Açaí tradicional','qty':0.23},{'ingredient':'Leite em pó','qty':0.02},{'ingredient':'Copo 300 ml','qty':1}])
         con.executemany('INSERT INTO recipes(name,size,price,margin,items) VALUES(?,?,?,?,?)',[('Açaí 500 ml','500 ml',22,120,r500),('Açaí 300 ml','300 ml',16,120,r300)])
+    # Cardápio oficial Aloha (mantém preços e tamanhos alinhados ao menu da loja).
+    con.execute("UPDATE recipes SET name='Copo 500 ml', size='500 ml', price=27 WHERE name='Açaí 500 ml'")
+    con.execute("UPDATE recipes SET name='Copo 300 ml', size='300 ml', price=16 WHERE name='Açaí 300 ml'")
+    for name, unit, stock, cost in [('Copo 150 ml','un',80,.42),('Copo 200 ml','un',80,.48),('Copo 500 ml','un',80,.75)]:
+        con.execute('INSERT OR IGNORE INTO ingredients(name,unit,stock,cost,updated_at) VALUES(?,?,?,?,?)',(name,unit,stock,cost,datetime.now().isoformat()))
+    menu_recipes = [
+        ('Copo 150 ml','150 ml',10, [{'ingredient':'Açaí tradicional','qty':.13},{'ingredient':'Copo 150 ml','qty':1}]),
+        ('Copo 200 ml','200 ml',12, [{'ingredient':'Açaí tradicional','qty':.18},{'ingredient':'Copo 200 ml','qty':1}]),
+        ('Bowl 500 ml','500 ml',25, [{'ingredient':'Açaí tradicional','qty':.40},{'ingredient':'Copo 500 ml','qty':1}]),
+    ]
+    for name, size, price, items in menu_recipes:
+        con.execute('INSERT OR IGNORE INTO recipes(name,size,price,margin,items) VALUES(?,?,?,?,?)',(name,size,price,120,json.dumps(items)))
     con.commit(); con.close()
 
 def rows(q, args=()):
@@ -61,6 +73,15 @@ def ingredients():
     if request.method=='GET': return jsonify(rows('SELECT * FROM ingredients ORDER BY name'))
     d=request.json; con=db(); con.execute('INSERT INTO ingredients(name,unit,stock,cost,updated_at) VALUES(?,?,?,?,?)',(d['name'],d['unit'],d.get('stock',0),d.get('cost',0),datetime.now().isoformat())); con.commit(); con.close(); return jsonify(ok=True)
 
+@app.route('/api/ingredients/<int:item_id>', methods=['PUT','DELETE'])
+def ingredient_detail(item_id):
+    con=db()
+    if request.method == 'DELETE':
+        con.execute('DELETE FROM ingredients WHERE id=?',(item_id,)); con.commit(); con.close(); return jsonify(ok=True)
+    d=request.json
+    con.execute('UPDATE ingredients SET name=?,unit=?,stock=?,cost=?,updated_at=? WHERE id=?',(d['name'],d['unit'],d['stock'],d['cost'],datetime.now().isoformat(),item_id))
+    con.commit(); con.close(); return jsonify(ok=True)
+
 @app.get('/api/recipes')
 def recipes():
     out=rows('SELECT * FROM recipes WHERE active=1 ORDER BY name')
@@ -71,6 +92,33 @@ def recipes():
 def add_recipe():
     d=request.json; con=db(); con.execute('INSERT INTO recipes(name,size,price,margin,items) VALUES(?,?,?,?,?)',(d['name'],d.get('size',''),d.get('price',0),d.get('margin',100),json.dumps(d['items']))); con.commit(); con.close(); return jsonify(ok=True)
 
+@app.route('/api/recipes/<int:recipe_id>', methods=['PUT','DELETE'])
+def recipe_detail(recipe_id):
+    con=db()
+    if request.method == 'DELETE':
+        con.execute('UPDATE recipes SET active=0 WHERE id=?',(recipe_id,)); con.commit(); con.close(); return jsonify(ok=True)
+    d=request.json
+    con.execute('UPDATE recipes SET name=?,size=?,price=?,margin=?,items=? WHERE id=?',(d['name'],d.get('size',''),d.get('price',0),d.get('margin',100),json.dumps(d['items']),recipe_id))
+    con.commit(); con.close(); return jsonify(ok=True)
+
+@app.get('/api/purchases')
+def purchases_list(): return jsonify(rows('SELECT * FROM purchases ORDER BY id DESC'))
+
+@app.route('/api/purchases/<int:purchase_id>', methods=['PUT','DELETE'])
+def purchase_detail(purchase_id):
+    con=db(); old=con.execute('SELECT * FROM purchases WHERE id=?',(purchase_id,)).fetchone()
+    if not old: con.close(); return jsonify(error='Compra não encontrada'),404
+    # Sempre desfaz a compra anterior antes de editar ou apagar para manter o estoque correto.
+    for item in json.loads(old['items']): con.execute('UPDATE ingredients SET stock=stock-? WHERE name=?',(float(item['quantity']),item['ingredient']))
+    if request.method == 'DELETE': con.execute('DELETE FROM purchases WHERE id=?',(purchase_id,))
+    else:
+        d=request.json; total=0
+        for item in d['items']:
+            total+=float(item['quantity'])*float(item['unit_cost'])
+            con.execute('UPDATE ingredients SET stock=stock+?,cost=?,updated_at=? WHERE name=?',(item['quantity'],item['unit_cost'],datetime.now().isoformat(),item['ingredient']))
+        con.execute('UPDATE purchases SET supplier=?,total=?,items=? WHERE id=?',(d.get('supplier',''),total,json.dumps(d['items']),purchase_id))
+    con.commit(); con.close(); return jsonify(ok=True)
+
 @app.post('/api/sales')
 def sale():
     d=request.json; qty=max(1,int(d.get('quantity',1))); con=db(); recipe=con.execute('SELECT * FROM recipes WHERE id=?',(d['recipe_id'],)).fetchone()
@@ -79,6 +127,25 @@ def sale():
         cur=con.execute('UPDATE ingredients SET stock=stock-? WHERE name=? AND stock>=?',(float(item['qty'])*qty,item['ingredient'],float(item['qty'])*qty))
         if not cur.rowcount: con.rollback(); con.close(); return jsonify(error=f"Estoque insuficiente: {item['ingredient']}"),400
     total=float(recipe['price'])*qty; con.execute('INSERT INTO sales(recipe_id,quantity,total,created_at) VALUES(?,?,?,?)',(recipe['id'],qty,total,datetime.now().isoformat())); con.commit(); con.close(); return jsonify(ok=True,total=total)
+
+@app.get('/api/sales')
+def sales_list(): return jsonify(rows('SELECT s.*, r.name FROM sales s LEFT JOIN recipes r ON r.id=s.recipe_id ORDER BY s.id DESC LIMIT 100'))
+
+@app.route('/api/sales/<int:sale_id>', methods=['PUT','DELETE'])
+def sale_detail(sale_id):
+    con=db(); sale=con.execute('SELECT * FROM sales WHERE id=?',(sale_id,)).fetchone()
+    if not sale: con.close(); return jsonify(error='Venda não encontrada'),404
+    recipe=con.execute('SELECT * FROM recipes WHERE id=?',(sale['recipe_id'],)).fetchone()
+    # Devolve a baixa original; se for edição, aplica novamente a nova quantidade.
+    for item in json.loads(recipe['items']): con.execute('UPDATE ingredients SET stock=stock+? WHERE name=?',(float(item['qty'])*sale['quantity'],item['ingredient']))
+    if request.method == 'DELETE': con.execute('DELETE FROM sales WHERE id=?',(sale_id,))
+    else:
+        new_qty=max(1,int(request.json['quantity']))
+        for item in json.loads(recipe['items']):
+            cur=con.execute('UPDATE ingredients SET stock=stock-? WHERE name=? AND stock>=?',(float(item['qty'])*new_qty,item['ingredient'],float(item['qty'])*new_qty))
+            if not cur.rowcount: con.rollback(); con.close(); return jsonify(error=f"Estoque insuficiente: {item['ingredient']}"),400
+        con.execute('UPDATE sales SET quantity=?,total=? WHERE id=?',(new_qty,float(recipe['price'])*new_qty,sale_id))
+    con.commit(); con.close(); return jsonify(ok=True)
 
 @app.post('/api/purchases')
 def purchase():
