@@ -12,8 +12,9 @@ jobs:
         with: { distribution: 'temurin', java-version: '17' }
       - name: Preparar Android SDK
         run: |
-          yes | sdkmanager --licenses || true
-          sdkmanager "platform-tools" "platforms;android-35" "build-tools;35.0.0"
+          SDKMANAGER="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
+          yes | "$SDKMANAGER" --licenses || true
+          "$SDKMANAGER" "platform-tools" "platforms;android-35" "build-tools;35.0.0"
       - name: Instalar Gradle e gerar APK
         working-directory: aloha-casa-do-acai/android
         run: |
