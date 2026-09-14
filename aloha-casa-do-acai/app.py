@@ -88,7 +88,8 @@ def recipes():
     try:
         out=rows('SELECT * FROM recipes WHERE active=1 ORDER BY name')
         for x in out:
-            x['items']=json.loads(x['items']); x['cost']=round(recipe_cost(x),2); x['suggested']=round(x['cost']*(1+float(x.get('margin') or 100)/100),2)
+            # Calcula com o JSON bruto e só então o converte para a interface.
+            x['cost']=round(recipe_cost(x),2); x['items']=json.loads(x['items']); x['suggested']=round(x['cost']*(1+float(x.get('margin') or 100)/100),2)
         return jsonify(out)
     except Exception as error:
         app.logger.exception('Erro ao carregar receitas')
