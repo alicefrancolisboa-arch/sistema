@@ -153,6 +153,10 @@ def purchase():
     d=request.json; con=db(); total=0
     for item in d['items']:
         total+=float(item['quantity'])*float(item['unit_cost'])
+        # Itens escolhidos na leitura que ainda não existem passam a ser insumos cadastrados.
+        exists=con.execute('SELECT 1 FROM ingredients WHERE name=?',(item['ingredient'],)).fetchone()
+        if not exists:
+            con.execute('INSERT INTO ingredients(name,unit,stock,cost,updated_at) VALUES(?,?,?,?,?)',(item['ingredient'],item.get('unit','un'),0,item['unit_cost'],datetime.now().isoformat()))
         con.execute('UPDATE ingredients SET stock=stock+?,cost=?,updated_at=? WHERE name=?',(item['quantity'],item['unit_cost'],datetime.now().isoformat(),item['ingredient']))
     con.execute('INSERT INTO purchases(supplier,created_at,total,items) VALUES(?,?,?,?)',(d.get('supplier',''),datetime.now().isoformat(),total,json.dumps(d['items']))); con.commit(); con.close(); return jsonify(ok=True,total=total)
 
