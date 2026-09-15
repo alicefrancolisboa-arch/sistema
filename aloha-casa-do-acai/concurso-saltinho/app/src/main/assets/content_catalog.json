@@ -1,0 +1,11 @@
+{
+  "concurso":"Prefeitura de Saltinho SP Concurso Publico 01 2026",
+  "banca":"AVANCASP",
+  "fontes":[
+    {"titulo":"Edital oficial AVANCASP","url":"https://avancasp.selecao.net.br/informacoes/273/","tipo":"edital"},
+    {"titulo":"Lei 8.080 de 1990","url":"https://www.planalto.gov.br/ccivil_03/leis/l8080.htm","tipo":"legislacao"},
+    {"titulo":"Lei 8.142 de 1990","url":"https://www.planalto.gov.br/ccivil_03/leis/l8142.htm","tipo":"legislacao"},
+    {"titulo":"ANVISA Controle sanitario de alimentos","url":"https://www.gov.br/anvisa/pt-br/assuntos/alimentos/controle-sanitario","tipo":"tecnico"}
+  ],
+  "aviso":"O aplicativo usa fontes públicas e gera questões inéditas. Confirme alterações diretamente no edital e nas normas vigentes."
+}
