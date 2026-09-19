@@ -1,0 +1,11 @@
+data/
+.env
+node_modules/
+artifacts/
+*.log
+
+tools/
+android/build/
+android/signing/
+*.apk
+!dist/Saidas-Mary.apk

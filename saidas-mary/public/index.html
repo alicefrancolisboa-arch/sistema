@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="pt-BR">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><meta name="theme-color" content="#a93470"><meta name="description" content="Vendas, folhas de açaí e cobranças da sua loja."><link rel="manifest" href="/manifest.webmanifest"><link rel="icon" href="/icon.svg" type="image/svg+xml"><link rel="stylesheet" href="/styles.css"><title>Saídas Mary • Meu controle</title></head>
+<body>
+<div class="shell">
+<aside class="sidebar">
+<a class="brand" href="#inicio"><span class="brand-mark">a.</span><span>Saídas Mary<small>MEU CONTROLE</small></span></a>
+<div class="nav-caption">MINHA LOJA</div>
+<nav aria-label="Menu principal">
+<a href="#inicio" data-nav="inicio"><span>◫</span> Visão geral</a>
+<a href="#clientes" data-nav="clientes"><span>♙</span> Clientes</a>
+<a href="#folhas" data-nav="folhas"><span>▤</span> Ler uma folha</a>
+<a href="#cobrancas" data-nav="cobrancas"><span>↗</span> Cobranças</a>
+<a href="#historico" data-nav="historico"><span>◷</span> Histórico</a>
+<a href="#ajustes" data-nav="ajustes"><span>⚙</span> Ajustes</a>
+</nav>
+<div class="sidebar-foot"><span class="dot"></span> Piracicaba, SP<p>Um risquinho.<br>Mais um açaí.</p><strong>R$ 10,00 <small>por unidade</small></strong></div>
+</aside>
+<div class="workspace">
+<header class="topbar"><span>Seu negócio, em dia.</span><span id="top-date"></span><button class="button small" id="install" hidden>Instalar aplicativo</button></header>
+<main id="main" tabindex="-1"><div class="loading">Carregando sua loja…</div></main>
+<footer class="page-foot">SAÍDAS MARY <span>Feito para simplificar seu dia.</span></footer>
+</div></div>
+<dialog id="modal"><div id="modal-content"></div></dialog>
+<div id="toast" role="status" aria-live="polite" hidden></div>
+<script type="module" src="/app.js"></script>
+</body></html>
