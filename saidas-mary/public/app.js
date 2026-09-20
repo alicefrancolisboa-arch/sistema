@@ -10,6 +10,8 @@ async function api(path,body){
  const data=await res.json();if(res.status===401){login();throw Error(data.error);}if(!res.ok)throw Error(data.error||'Não foi possível concluir.');return data;
 }
 async function refresh(){state=await api('state');$('#top-date').textContent=new Date(state.today+'T12:00:00').toLocaleDateString('pt-BR',{weekday:'long',day:'numeric',month:'long'});render();}
+const activeCustomers=()=>state.customers.filter(c=>!state.archivedCustomers?.some(a=>a.customer===c.id));
+let stockDay=today();
 function customer(cid){return state.customers.find(c=>c.id===cid);}
 function balance(cid,cutoff='9999-12-31'){return state.balances.filter(s=>(!cid||s.customer===cid)&&s.due<=cutoff).reduce((a,s)=>a+s.cents,0);}
 const pendingCustomers=cutoff=>state.customers.map(c=>({...c,balance:balance(c.id,cutoff)})).filter(c=>c.balance>0);
@@ -25,9 +27,9 @@ function dates(){
 function defaultDue(){return dates().find(d=>d>=state.today)||dueDate(state.today,state.extraHolidays);}
 function dueLabel(d){return prettyDate(d)+(d.endsWith('-20')?' · Dia 20':' · 5º dia útil');}
 function render(){
- if(!state)return;view=location.hash.slice(1)||'inicio';if(!['inicio','clientes','folhas','cobrancas','historico','ajustes'].includes(view))view='inicio';
+ if(!state)return;view=location.hash.slice(1)||'inicio';if(!['inicio','clientes','folhas','cobrancas','historico','estoque','ajustes'].includes(view))view='inicio';
  document.querySelectorAll('[data-nav]').forEach(a=>a.classList.toggle('active',a.dataset.nav===view));
- $('#main').innerHTML=({inicio:home,clientes:clients,folhas:sheets,cobrancas:billing,historico:history,ajustes:settings})[view]();bindForms();
+ $('#main').innerHTML=({inicio:home,clientes:clients,folhas:sheets,cobrancas:billing,historico:history,estoque:stockPage,ajustes:settings})[view]();bindForms();
 }
 function home(){
  const total=balance(),received=state.payments.filter(p=>p.paid.startsWith(state.today.slice(0,7))).reduce((a,p)=>a+p.cents,0),alerts=reminders(state.today,state.extraHolidays);
@@ -43,10 +45,10 @@ function home(){
  (state.sales.length?'<div class="table-wrap"><table><thead><tr><th>Cliente</th><th>Qtd.</th><th>Valor</th></tr></thead><tbody>'+state.sales.slice(0,5).map(s=>'<tr><td>'+esc(customer(s.customer)?.name)+'</td><td>'+s.qty+'</td><td class="amount">'+money(s.qty*1000)+'</td></tr>').join('')+'</tbody></table></div>':empty('Sua primeira venda começa aqui','Cadastre um cliente e registre os açaís vendidos.',btn('Registrar venda','sale','','secondary small')))+'</section></div>';
 }
 function clients(){
- const found=state.customers.filter(c=>c.name.toLocaleLowerCase('pt-BR').includes(search.toLocaleLowerCase('pt-BR')));
+ const found=activeCustomers().filter(c=>c.name.toLocaleLowerCase('pt-BR').includes(search.toLocaleLowerCase('pt-BR')));
  return head('SEUS CLIENTES','Uma conta para cada pessoa.','Vendas, pagamentos e saldo sempre juntos.',btn('＋ Novo cliente','customer'))+
  '<div class="toolbar"><input id="search" type="search" placeholder="Buscar pelo nome do cliente…" aria-label="Buscar cliente" value="'+esc(search)+'"></div><div class="cards">'+
- (found.length?found.map(c=>'<article class="customer"><div class="row"><div class="avatar">'+esc(initials(c.name))+'</div><div class="grow"><h3>'+esc(c.name)+'</h3><span class="tiny muted">'+esc(c.phone?c.phone.replace(/^55/,''):'WhatsApp não cadastrado')+'</span></div>'+btn('Editar','customer','data-id="'+c.id+'"','ghost small')+'</div><div class="balance">'+money(balance(c.id))+'</div><p class="tiny muted">Saldo pendente · '+state.sales.filter(s=>s.customer===c.id).reduce((a,s)=>a+s.qty,0)+' açaís no histórico</p><div class="row">'+btn('＋ Venda','sale','data-id="'+c.id+'"','secondary small')+btn('Receber','payment','data-id="'+c.id+'" '+(balance(c.id)?'':'disabled'),'small')+'</div></article>').join(''):empty(search?'Nenhum cliente encontrado':'Seu caderno de clientes','Cadastre nome e, se quiser, o WhatsApp.'))+'</div>';
+ (found.length?found.map(c=>'<article class="customer"><div class="row"><div class="avatar">'+esc(initials(c.name))+'</div><div class="grow"><h3>'+esc(c.name)+'</h3><span class="tiny muted">'+esc(c.phone?c.phone.replace(/^55/,''):'WhatsApp não cadastrado')+'</span></div>'+btn('Editar','customer','data-id="'+c.id+'"','ghost small')+btn('Excluir','archive-customer','data-id="'+c.id+'"','ghost small')+'</div><div class="balance">'+money(balance(c.id))+'</div><p class="tiny muted">Saldo pendente · '+state.sales.filter(s=>s.customer===c.id).reduce((a,s)=>a+s.qty,0)+' açaís no histórico</p>'+customerPurchases(c.id)+'<div class="row">'+btn('＋ Venda','sale','data-id="'+c.id+'"','secondary small')+btn('Receber','payment','data-id="'+c.id+'" '+(balance(c.id)?'':'disabled'),'small')+'</div></article>').join(''):empty(search?'Nenhum cliente encontrado':'Seu caderno de clientes','Cadastre nome e, se quiser, o WhatsApp.'))+'</div>'+archivedList();
 }
 function sheets(){
  const options=state.sheets.map(s=>'<option value="'+s.id+'" '+(s.id===selectedSheet?'selected':'')+'>'+esc(s.name)+' · '+prettyDate(s.due)+'</option>').join('');
@@ -62,8 +64,8 @@ function reviewHtml(){
  '<p class="tiny muted">Cada lado vale 1 açaí: quadrado fechado = 4 (R$ 40); quadrado com risco atravessando = 5 (R$ 50). “Total na foto” inclui os risquinhos antigos. Somente a diferença será adicionada. A IA pode errar nomes e contagens; confira cada linha com a foto.</p>'+
  '<form id="review-form">'+review.rows.map((r,i)=>'<div class="review-row '+(r.uncertain?'attention':'')+'" data-row="'+i+'">'+btn('Remover linha','remove-row','data-index="'+i+'"','ghost small exclude')+
  '<label class="field">Nome lido<input name="name-'+i+'" value="'+esc(r.name)+'" maxlength="80" required></label>'+
- '<label class="field">Vincular ao cliente<select name="customer-'+i+'" data-match="'+i+'"><option value="">Criar cliente com o nome acima</option>'+state.customers.map(c=>'<option value="'+c.id+'" '+(c.id===r.customer?'selected':'')+'>'+esc(c.name)+'</option>').join('')+'</select></label>'+
- '<label class="field">Total de risquinhos na foto<input name="total-'+i+'" data-total="'+i+'" type="number" min="0" max="10000" step="1" inputmode="numeric" required value="'+(r.total??'')+'"></label>'+
+ (r.matchedCustomer?'<div class="notice">Já existe um cliente chamado <strong>'+esc(customer(r.matchedCustomer)?.name)+'</strong>. É a mesma pessoa?</div>':'')+'<label class="field">Quem comprou?<select required name="customer-'+i+'" data-match="'+i+'"><option value="">Escolha se é o mesmo cliente…</option><option value="__new__" '+(r.createNew||(!r.matchedCustomer&&!r.customer)?'selected':'')+'>Não, criar outro cliente com este nome</option>'+activeCustomers().map(c=>'<option value="'+c.id+'" '+(c.id===r.customer?'selected':'')+'>'+esc(c.name)+'</option>').join('')+'</select></label>'+
+ '<label class="field">Data da compra deste cliente<input type="date" name="purchased-'+i+'" max="'+state.today+'" value="'+(r.purchased||photoDate)+'" required></label>'+'<label class="field">Total de risquinhos na foto<input name="total-'+i+'" data-total="'+i+'" type="number" min="0" max="10000" step="1" inputmode="numeric" required value="'+(r.total??'')+'"></label>'+
  (r.uncertain?'<span class="tag warn">Confira esta leitura com atenção</span>':'')+(r.note?'<p class="tiny muted">'+esc(r.note)+'</p>':'')+
  '<div class="counts"><span>Já contabilizados: <b data-previous="'+i+'">'+r.previous+'</b></span><strong data-delta="'+i+'">Novos: '+(r.total===null?'?':r.total-r.previous)+'</strong></div></div>').join('')+
  btn('＋ Adicionar linha que faltou','add-row','','secondary small')+
@@ -94,7 +96,7 @@ function settings(){
  '<section class="panel"><h2>Feriados de Piracicaba · SP</h2><p class="tiny muted">Feriados recorrentes nacionais, de São Paulo e de Piracicaba, incluindo Sexta-feira Santa e Corpus Christi. Pontos facultativos não são excluídos. Base conferida no calendário municipal de 2026; revise alterações para outros anos.</p><a class="link tiny" target="_blank" rel="noopener noreferrer" href="https://piracicaba.sp.gov.br/servicos/calendario-de-feriados-2026/">Consultar calendário da Prefeitura ↗</a><form id="holiday-form"><label class="field">Outras datas sem cobrança<textarea name="dates" rows="4" placeholder="2027-01-04&#10;Uma data por linha, no formato ano-mês-dia">'+esc(state.extraHolidays.join('\n'))+'</textarea><small>Afeta novos lançamentos. Vencimentos de vendas já registradas permanecem preservados.</small></label><p class="error-text" role="alert"></p><button class="button secondary" type="submit">Salvar datas</button></form></section></div>'+
  '<div><section class="panel"><div class="panel-head"><h2>Reconhecimento de fotos</h2><span class="tag '+(state.geminiConfigured?'':'warn')+'">'+(state.geminiConfigured?'Gemini + OCR':'OCR disponível')+'</span></div><p class="tiny muted">A leitura principal usa o Gemini. Se houver erro, limite de uso ou falta de chave, o Tesseract OCR em português entra como reserva e processa a foto no servidor. O OCR sugere nomes, mas exige conferir e preencher as quantidades. Toda leitura passa pela sua revisão.</p><form id="key-form"><label class="field">Chave de API do Gemini<input name="key" type="password" autocomplete="off" placeholder="Cole a chave da API aqui" minlength="20" required><small>A chave fica apenas na memória do servidor durante esta execução. Não é enviada junto com backups nem salva no navegador.</small></label><p class="error-text" role="alert"></p><button class="button" type="submit">'+(state.geminiConfigured?'Trocar chave do Gemini':'Ativar Gemini')+'</button></form><p class="tiny muted">O teste real da conexão acontece ao ler a primeira foto. Para ativação permanente, configure GEMINI_API_KEY no servidor.</p></section>'+
  '<section class="panel"><h2>Seus dados, guardados</h2><p class="tiny muted">Clientes e lançamentos são salvos no banco de dados deste servidor. Faça uma cópia com frequência. As fotos são usadas para leitura e não são guardadas no aplicativo.</p><a class="button secondary full" href="/api/backup" download>↓ Baixar cópia de segurança</a><p class="tiny muted">A cópia contém nomes, telefones e valores. Guarde em um lugar privado.</p><label class="button ghost full file-button">Restaurar uma cópia<input id="restore-file" type="file" accept=".json,application/json" aria-label="Restaurar backup"></label></section>'+
- '<section class="panel"><h2>Usar no celular</h2><p class="tiny muted">O APK usa as mesmas telas e dados do computador. Inicie Abrir-PC-e-Android.cmd, conecte os dois ao mesmo Wi-Fi e informe no APK o endereço e a senha mostrados na janela. Para usar fora da loja, é necessário hospedar o servidor com HTTPS.</p>'+'<a class="button secondary full" href="/baixar-apk" download>↓ Baixar APK para Android</a>'+btn('Ver como começar','instructions','','ghost small')+'</section></div></div>';
+ '<section class="panel"><h2>Usar no celular</h2><p class="tiny muted">O APK usa as mesmas telas e dados do computador. Acesse saidas-mary.onrender.com ou instale o APK. Funciona pela internet, com o computador desligado.</p>'+'<a class="button secondary full" href="/baixar-apk" download>↓ Baixar APK para Android</a>'+btn('Ver como começar','instructions','','ghost small')+'</section></div></div>';
 }
 
 function openModal(html){$('#modal-content').innerHTML='<button type="button" class="close" aria-label="Fechar" data-action="close">×</button>'+html;$('#modal').showModal();setTimeout(()=>$('#modal input, #modal select')?.focus(),50);}
@@ -107,7 +109,7 @@ function customerModal(cid,afterSave){
  $('#customer-form').onsubmit=e=>{e.preventDefault();submit(e.target,async f=>{const saved=await api('customers',{id:cid||undefined,name:f.get('name'),phone:f.get('phone')});closeModal();await refresh();toast('Cliente salvo.');if(afterSave)afterSave(saved.id);});};
 }
 function saleModal(cid){
- if(!state.customers.length){customerModal(undefined,saleModal);toast('Cadastre o primeiro cliente para registrar uma venda.');return;}
+ if(!activeCustomers().length){customerModal(undefined,saleModal);toast('Cadastre o primeiro cliente para registrar uma venda.');return;}
  const operation=id();
  openModal('<h2>Registrar venda</h2><form id="sale-form"><label class="field">Cliente<select name="customer">'+state.customers.map(c=>'<option value="'+c.id+'" '+(c.id===cid?'selected':'')+'>'+esc(c.name)+'</option>').join('')+'</select></label><div class="form-grid"><label class="field">Quantidade de açaís<input name="qty" type="number" min="1" max="10000" step="1" value="1" inputmode="numeric" required></label><label class="field">Data da compra<input name="purchased" type="date" value="'+state.today+'" max="'+state.today+'" required></label></div><div class="notice" id="sale-summary"></div><p class="tiny muted">Para vendas anotadas em uma folha que será fotografada, registre pela leitura da folha. Cadastrar a mesma venda das duas formas gera duplicidade.</p><p class="error-text" role="alert"></p><div class="dialog-actions"><button class="button" type="submit">Salvar venda</button></div></form>');
  const form=$('#sale-form'),summary=()=>{try{$('#sale-summary').textContent=money(Number(form.elements.qty.value)*1000)+' · Vence em '+prettyDate(dueDate(form.elements.purchased.value,state.extraHolidays));}catch{$('#sale-summary').textContent='Confira a data e a quantidade.';}};
@@ -127,7 +129,7 @@ function sheetModal(){
 function captureReview(){
  if(!review||!$('#review-form'))return;
  const f=new FormData($('#review-form'));
- review.rows.forEach((r,i)=>{r.name=f.get('name-'+i);r.customer=f.get('customer-'+i);r.total=f.get('total-'+i)===''?null:Number(f.get('total-'+i));r.previous=state.totals.find(t=>t.sheet===selectedSheet&&t.customer===r.customer)?.qty||0;});
+ review.rows.forEach((r,i)=>{r.name=f.get('name-'+i);const choice=f.get('customer-'+i);r.createNew=choice==='__new__';r.matchConfirmed=!!choice&&!r.createNew;r.customer=r.createNew?'':choice;r.purchased=f.get('purchased-'+i);r.total=f.get('total-'+i)===''?null:Number(f.get('total-'+i));r.previous=state.totals.find(t=>t.sheet===selectedSheet&&t.customer===r.customer)?.qty||0;});
 }
 async function loadPhoto(file){
  if(!file)return;if(file.size>25*1024*1024)throw Error('Escolha uma foto de até 25 MB.');
@@ -158,6 +160,8 @@ function login(){
  $('#login-form').onsubmit=async e=>{e.preventDefault();const form=e.target;await submit(form,async f=>{const response=await fetch('/api/login',{method:'POST',headers:{'Content-Type':'application/json','X-Acai-App':'1'},body:JSON.stringify({password:f.get('password')})});const data=await response.json();if(!response.ok)throw Error(data.error);await refresh();});};
 }
 function bindForms(){
+ const ds=$('#stock-day');if(ds)ds.onchange=()=>{stockDay=ds.value;render();};
+ const sf=$('#stock-form');if(sf)sf.onsubmit=e=>{e.preventDefault();submit(sf,async f=>{await api('stock/daily',{day:stockDay,cups:Number(f.get('cups'))});await refresh();toast('Copos do dia atualizados.');});};
  const s=$('#search');if(s)s.oninput=()=>{const pos=s.selectionStart;search=s.value;render();$('#search').focus();$('#search').setSelectionRange(pos,pos);};
  const d=$('#due-select');if(d)d.onchange=()=>{selectedDue=d.value;render();};
  const sh=$('#sheet-select');if(sh)sh.onchange=()=>{selectedSheet=sh.value;review=null;render();};
@@ -166,7 +170,7 @@ function bindForms(){
  const rf=$('#review-form');
  if(rf){
   rf.oninput=()=>{captureReview();review.rows.forEach((r,i)=>{$('[data-previous="'+i+'"]').textContent=r.previous;$('[data-delta="'+i+'"]').textContent=r.total===null?'Novos: ?':'Novos: '+(r.total-r.previous)+' · '+money((r.total-r.previous)*1000);});};
-  rf.onsubmit=e=>{e.preventDefault();submit(rf,async()=>{captureReview();const result=await api('photos/confirm',{draft:review.id,rows:review.rows.map(r=>({customer:r.customer,name:r.name,total:r.total,previous:r.previous})),purchased:photoDate,reviewed:rf.elements.reviewed.checked,operation:review.operation});review=null;photo=null;await refresh();toast(result.added+' novos açaís contabilizados · '+money(result.cents));});};
+  rf.onsubmit=e=>{e.preventDefault();submit(rf,async()=>{captureReview();const result=await api('photos/confirm',{draft:review.id,rows:review.rows.map(r=>({customer:r.customer,name:r.name,total:r.total,previous:r.previous,createNew:r.createNew,matchConfirmed:r.matchConfirmed,purchased:r.purchased})),purchased:photoDate,reviewed:rf.elements.reviewed.checked,operation:review.operation});review=null;photo=null;await refresh();toast(result.added+' novos açaís contabilizados · '+money(result.cents));});};
  }
  const kf=$('#key-form');if(kf)kf.onsubmit=e=>{e.preventDefault();submit(kf,async f=>{await api('vision/key',{key:f.get('key')});await refresh();toast('Conexão configurada. Envie uma foto para testar a leitura.');});};
  const hf=$('#holiday-form');if(hf)hf.onsubmit=e=>{e.preventDefault();submit(hf,async f=>{await api('holidays',{dates:String(f.get('dates')).split(/\s+/).filter(Boolean)});await refresh();toast('Datas salvas para novos lançamentos.');});};
@@ -186,6 +190,9 @@ document.addEventListener('click',async e=>{
  try{
   if(action==='close')closeModal();
   if(action==='customer')customerModal(cid);
+  if(action==='archive-customer')archiveModal(cid);
+  if(action==='restore-customer'){await api('customers/archive',{id:cid,restore:true});await refresh();toast('Cliente restaurado.');}
+  if(action==='complement')complementModal(cid);
   if(action==='sale'){e.preventDefault();saleModal(cid);}
   if(action==='payment')paymentModal(cid);
   if(action==='sheet')sheetModal();
@@ -209,3 +216,14 @@ window.addEventListener('beforeinstallprompt',e=>{e.preventDefault();installProm
 $('#install').onclick=async()=>{if(installPrompt){await installPrompt.prompt();installPrompt=null;$('#install').hidden=true;}};
 if('serviceWorker'in navigator)navigator.serviceWorker.register('/sw.js').catch(()=>{});
 refresh().catch(e=>{if(!$('#login-form'))$('#main').innerHTML=empty('Não foi possível abrir a loja',e.message)+'<p class="tiny muted">Confira se o servidor está ligado e recarregue a página.</p>';});
+function customerPurchases(cid){
+ const groups=new Map();for(const s of state.sales.filter(s=>s.customer===cid))groups.set(s.purchased,(groups.get(s.purchased)||0)+s.qty);
+ return '<details><summary>Compras por data ('+groups.size+')</summary>'+([...groups].sort((a,b)=>b[0].localeCompare(a[0])).map(([d,q])=>'<div class="schedule"><span>'+prettyDate(d)+'</span><span class="right">'+q+' copo(s) · '+money(q*1000)+'</span></div>').join('')||'<p class="tiny muted">Nenhuma compra registrada.</p>')+'</details>';
+}
+function archivedList(){const list=state.customers.filter(c=>state.archivedCustomers?.some(a=>a.customer===c.id));return list.length?'<details class="panel"><summary>Clientes excluídos ('+list.length+')</summary><p class="tiny muted">O histórico e os valores a receber foram preservados.</p>'+list.map(c=>'<div class="schedule"><strong>'+esc(c.name)+'</strong>'+btn('Restaurar','restore-customer','data-id="'+c.id+'"','secondary small')+'</div>').join('')+'</details>':'';}
+function archiveModal(cid){const c=customer(cid);openModal('<h2>Excluir '+esc(c.name)+'?</h2><p>O cliente sai da lista ativa. As compras e cobranças ficam preservadas, inclusive o saldo de '+money(balance(cid))+'. Você poderá restaurar o cadastro em Clientes excluídos.</p><form id="archive-form"><p class="error-text" role="alert"></p><button type="submit" class="button danger">Confirmar exclusão</button></form>');$('#archive-form').onsubmit=e=>{e.preventDefault();submit(e.target,async()=>{await api('customers/archive',{id:cid});closeModal();await refresh();toast('Cliente retirado da lista ativa.');});};}
+function stockPage(){
+ const record=state.dailyStock?.find(r=>r.day===stockDay),sold=state.sales.filter(s=>s.purchased===stockDay).reduce((n,s)=>n+s.qty,0),available=(record?.cups||0)-sold;
+ return head('NO TRABALHO','Copos e complementos','Registre os copos levados e confira o que ainda está disponível.')+'<label class="field">Dia do controle<input id="stock-day" type="date" value="'+stockDay+'"></label><section class="stats"><div class="stat"><label>Copos levados</label><strong>'+(record?.cups??'—')+'</strong></div><div class="stat"><label>Vendidos no dia</label><strong>'+sold+'</strong></div><div class="stat"><label>Disponíveis para venda</label><strong>'+(record?Math.max(0,available):'—')+'</strong></div></section>'+(record&&available<0?'<div class="notice warn">Há '+(-available)+' vendas a mais que os copos informados. Confira o total levado.</div>':'')+'<section class="panel"><form id="stock-form"><label class="field">Total de copos levados neste dia<input name="cups" type="number" min="0" max="100000" step="1" required value="'+(record?.cups??'')+'"><small>Se levar mais copos, informe o novo total do dia. Vendas manuais e por foto são descontadas automaticamente pela data da compra. Sobras não passam para outro dia automaticamente.</small></label><p class="error-text" role="alert"></p><button class="button" type="submit">Salvar copos do dia</button></form></section><section class="panel"><div class="panel-head"><h2>Complementos no trabalho</h2>'+btn('＋ Complemento','complement','','secondary small')+'</div><p class="tiny muted">Informe a quantidade que ainda está no local. Atualize após uso ou reposição; os complementos não são descontados por venda.</p>'+(state.complements?.length?state.complements.map(c=>'<div class="schedule"><div class="grow"><strong>'+esc(c.name)+'</strong><p>'+c.quantity.toLocaleString('pt-BR')+' '+esc(c.unit)+' · atualizado em '+new Date(c.updated).toLocaleDateString('pt-BR')+'</p></div>'+btn('Atualizar','complement','data-id="'+c.id+'"','secondary small')+'</div>').join(''):empty('Cadastre os complementos','Ex.: leite em pó, granola ou creme.'))+'</section>';
+}
+function complementModal(cid){const c=state.complements?.find(c=>c.id===cid)||{name:'',quantity:0,unit:'un'};openModal('<h2>Complemento disponível</h2><form id="complement-form"><label class="field">Nome do complemento<input name="name" maxlength="80" required value="'+esc(c.name)+'" '+(cid?'readonly':'')+'></label><label class="field">Quantidade restante<input name="quantity" type="number" min="0" max="100000" step="0.001" required value="'+c.quantity+'"></label><label class="field">Unidade<select name="unit">'+['un','kg','g','L','ml'].map(u=>'<option '+(u===c.unit?'selected':'')+'>'+u+'</option>').join('')+'</select></label><p class="error-text" role="alert"></p><button type="submit" class="button">Salvar complemento</button></form>');$('#complement-form').onsubmit=e=>{e.preventDefault();submit(e.target,async f=>{await api('stock/complements',{name:f.get('name'),quantity:Number(f.get('quantity')),unit:f.get('unit')});closeModal();await refresh();toast('Quantidade atualizada.');});};}

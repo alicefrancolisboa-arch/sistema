@@ -47,4 +47,4 @@ export class CloudStore {
  close(){}
 }
 for(const method of ['snapshot','backup','sheet','imported','totals'])CloudStore.prototype[method]=function(...args){return this.invoke(method,args,false)};
-for(const method of ['saveCustomer','sale','payment','undoPayment','createSheet','setExtras','restore','commit'])CloudStore.prototype[method]=function(...args){return this.invoke(method,args,true)};
+for(const method of ['archiveCustomer','saveDailyStock','saveComplement','saveCustomer','sale','payment','undoPayment','createSheet','setExtras','restore','commit'])CloudStore.prototype[method]=function(...args){return this.invoke(method,args,true)};

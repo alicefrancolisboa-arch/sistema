@@ -19,6 +19,9 @@ export class Store {
    CREATE TABLE IF NOT EXISTS settings(id INTEGER PRIMARY KEY CHECK(id=1),extra TEXT NOT NULL);
    INSERT OR IGNORE INTO settings VALUES(1,'[]');
    CREATE TABLE IF NOT EXISTS operations(id TEXT PRIMARY KEY,result TEXT NOT NULL);
+   CREATE TABLE IF NOT EXISTS archived_customers(customer TEXT PRIMARY KEY REFERENCES customers(id), archived TEXT NOT NULL);
+   CREATE TABLE IF NOT EXISTS daily_stock(day TEXT PRIMARY KEY,cups INTEGER NOT NULL CHECK(cups>=0));
+   CREATE TABLE IF NOT EXISTS complements(id TEXT PRIMARY KEY,name TEXT NOT NULL,normalized TEXT NOT NULL UNIQUE,quantity REAL NOT NULL CHECK(quantity>=0),unit TEXT NOT NULL,updated TEXT NOT NULL);
   `);
  }
  all(sql,...args){return this.db.prepare(sql).all(...args);}
@@ -46,9 +49,17 @@ export class Store {
   else{id=randomUUID();this.run('INSERT INTO customers VALUES(?,?,?,?)',id,name,norm(name),phone);}
   return this.customer(id);
  }
+ archiveCustomer({id,restore=false}){
+  this.customer(id);if(restore)this.run('DELETE FROM archived_customers WHERE customer=?',id);else this.run('INSERT OR REPLACE INTO archived_customers VALUES(?,?)',id,new Date().toISOString());return {ok:true};
+ }
+ saveDailyStock({day,cups}){date(day);integer(cups,0,100000,'Quantidade de copos');this.run('INSERT INTO daily_stock VALUES(?,?) ON CONFLICT(day) DO UPDATE SET cups=excluded.cups',day,cups);return {ok:true};}
+ saveComplement({name,quantity,unit}){
+  name=str(name,'Complemento',80);if(!Number.isFinite(quantity)||quantity<0||quantity>100000)throw Error('Quantidade inválida.');if(!['un','kg','g','L','ml'].includes(unit))throw Error('Unidade inválida.');
+  const old=this.one('SELECT id FROM complements WHERE normalized=?',norm(name));this.run('INSERT INTO complements VALUES(?,?,?,?,?,?) ON CONFLICT(normalized) DO UPDATE SET name=excluded.name,quantity=excluded.quantity,unit=excluded.unit,updated=excluded.updated',old?.id||randomUUID(),name,norm(name),quantity,unit,new Date().toISOString());return {ok:true};
+ }
  sale({customer,qty,purchased,operation}){
   return this.idempotent(operation,()=>{
-   this.customer(customer);integer(qty,1,10000,'Quantidade');date(purchased);
+   this.customer(customer);if(this.one('SELECT customer FROM archived_customers WHERE customer=?',customer))throw Error('Restaure o cliente antes de registrar uma venda.');integer(qty,1,10000,'Quantidade');date(purchased);
    if(purchased>today())throw Error('A venda não pode ter uma data futura.');
    const row={id:randomUUID(),customer,qty,purchased,due:dueDate(purchased,this.extras),source:'manual',created:new Date().toISOString()};
    this.run('INSERT INTO sales VALUES(?,?,?,?,?,?,?)',...Object.values(row));return row;
@@ -96,16 +107,18 @@ export class Store {
     if(!customer){
      const name=str(row.name,'Nome do cliente',80);
      const existing=this.one('SELECT id FROM customers WHERE normalized=?',norm(name));
-     if(existing)throw Error('Selecione o cadastro existente de '+name+' antes de confirmar.');
-     customer=this.saveCustomer({name}).id;
-    } else this.customer(customer);
+     if(existing&&!row.createNew)throw Error('Confirme se é o mesmo cliente ou outra pessoa.');
+     let uniqueName=name;if(existing){let suffix=2;do{uniqueName=name.slice(0,70)+' ('+suffix+')';suffix++;}while(this.one('SELECT id FROM customers WHERE normalized=?',norm(uniqueName)));}
+     customer=this.saveCustomer({name:uniqueName}).id;
+    } else {this.customer(customer);if(row.matchConfirmed!==true)throw Error('Confirme se o nome é o mesmo cliente antes de salvar.');if(this.one('SELECT customer FROM archived_customers WHERE customer=?',customer))throw Error('Restaure o cliente excluído antes de usar esse cadastro.');}
     if(seen.has(customer))throw Error('Um cliente está repetido na revisão. Some os risquinhos dele em uma única linha.');
     seen.add(customer);integer(row.total,0,10000,'Total de risquinhos');
     const before=this.one('SELECT qty FROM totals WHERE sheet=? AND customer=?',sheet,customer)?.qty||0;
     if(row.previous!==before)throw Error('Esta folha foi atualizada em outra janela. Leia a foto novamente.');
     if(row.total<before)throw Error('O total ficou menor que o já registrado. Confira a leitura ou selecione uma nova folha.');
+    const rowDate=row.purchased||purchased;date(rowDate);if(rowDate>today()||dueDate(rowDate,this.extras)!==page.due)throw Error('Confira a data da compra de cada cliente e o vencimento da folha.');
     const delta=row.total-before;added+=delta;
-    if(delta)this.run('INSERT INTO sales VALUES(?,?,?,?,?,?,?)',randomUUID(),customer,delta,purchased,page.due,sheet,new Date().toISOString());
+    if(delta)this.run('INSERT INTO sales VALUES(?,?,?,?,?,?,?)',randomUUID(),customer,delta,rowDate,page.due,sheet,new Date().toISOString());
     this.run('INSERT INTO totals VALUES(?,?,?) ON CONFLICT(sheet,customer) DO UPDATE SET qty=excluded.qty',sheet,customer,row.total);
     saved.push({customer,before,total:row.total,added:delta});
    }
@@ -115,16 +128,18 @@ export class Store {
   });
  }
  snapshot(){
-  return {customers:this.all('SELECT id,name,phone FROM customers ORDER BY name COLLATE NOCASE'),
+  return {archivedCustomers:this.all('SELECT * FROM archived_customers'),dailyStock:this.all('SELECT * FROM daily_stock ORDER BY day DESC'),complements:this.all('SELECT * FROM complements ORDER BY name'),customers:this.all('SELECT id,name,phone FROM customers ORDER BY name COLLATE NOCASE'),
    sales:this.all('SELECT * FROM sales ORDER BY created DESC'),payments:this.all('SELECT * FROM payments ORDER BY created DESC'),
    sheets:this.all('SELECT * FROM sheets ORDER BY created DESC'),totals:this.all('SELECT * FROM totals'),
    imports:this.all('SELECT * FROM imports ORDER BY created DESC'),extraHolidays:this.extras,balances:this.balances(),today:today()};
  }
- backup(){return {format:'casa-do-acai',version:1,created:new Date().toISOString(),tables:Object.fromEntries(['customers','sales','payments','sheets','totals','imports','settings','operations'].map(t=>[t,this.all('SELECT * FROM '+t)]))};}
+ backup(){return {format:'casa-do-acai',version:1,created:new Date().toISOString(),tables:Object.fromEntries(['customers','sales','payments','sheets','totals','imports','settings','operations','archived_customers','daily_stock','complements'].map(t=>[t,this.all('SELECT * FROM '+t)]))};}
  restore(payload) {
   if(payload?.format!=='casa-do-acai'||payload.version!==1||!payload.tables)throw Error('Arquivo de backup inválido.');
-  const columns={customers:['id','name','normalized','phone'],sales:['id','customer','qty','purchased','due','source','created'],payments:['id','customer','cents','paid','created'],sheets:['id','name','due','created'],totals:['sheet','customer','qty'],imports:['id','hash','sheet','created','rows'],settings:['id','extra'],operations:['id','result']};
-  const t=payload.tables;
+  const columns={customers:['id','name','normalized','phone'],sales:['id','customer','qty','purchased','due','source','created'],payments:['id','customer','cents','paid','created'],sheets:['id','name','due','created'],totals:['sheet','customer','qty'],imports:['id','hash','sheet','created','rows'],settings:['id','extra'],operations:['id','result'],archived_customers:['customer','archived'],daily_stock:['day','cups'],complements:['id','name','normalized','quantity','unit','updated']};
+  const t={archived_customers:[],daily_stock:[],complements:[],...payload.tables};
+  for(const r of t.daily_stock){date(r.day);integer(r.cups,0,100000,'Quantidade de copos');}
+  for(const r of t.complements){str(r.name,'Complemento',80);if(r.normalized!==norm(r.name)||!Number.isFinite(r.quantity)||r.quantity<0||!['un','kg','g','L','ml'].includes(r.unit))throw Error('Complemento inválido no backup.');}
   for(const name of Object.keys(columns)){if(!Array.isArray(t[name])||t[name].length>100000)throw Error('Backup inválido.');}
   if(t.settings.length!==1 || t.settings[0].id!==1)throw Error('Configuração inválida.');
   const extras=JSON.parse(t.settings[0].extra);if(!Array.isArray(extras)||extras.length>150)throw Error('Feriados inválidos.');extras.forEach(date);
@@ -134,7 +149,7 @@ export class Store {
   for(const s of t.sheets){str(s.name,'Folha',80);date(s.due);}
   for(const s of t.totals)integer(s.qty,0,10000,'Total');
   return this.transaction(()=>{
-   for(const name of ['operations','imports','totals','payments','sales','sheets','customers','settings'])this.db.exec('DELETE FROM '+name);
+   for(const name of ['archived_customers','daily_stock','complements','operations','imports','totals','payments','sales','sheets','customers','settings'])this.db.exec('DELETE FROM '+name);
    for(const [name,cols] of Object.entries(columns)){
     const insert=this.db.prepare('INSERT INTO '+name+'('+cols.join(',')+') VALUES('+cols.map(()=>'?').join(',')+')');
     for(const row of t[name]){

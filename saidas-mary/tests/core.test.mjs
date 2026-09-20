@@ -8,7 +8,7 @@ const use=(t)=>{const s=new Store(':memory:');t.after(()=>s.close());return s;};
 const op=()=>randomUUID();
 const hash=n=>String(n).padStart(64,'0');
 function setup(t){const s=use(t),c=s.saveCustomer({name:'Maria Silva',phone:'19999999999'}),sheet=s.createSheet({name:'Folha agosto',purchased:'2026-08-18'});return {s,c,sheet};}
-function commit(s,c,sheet,total,previous,n=1){return s.commit({sheet:sheet.id,hash:hash(n),purchased:'2026-08-18',operation:op(),reviewed:true,rows:[{customer:c.id,total,previous}]});}
+function commit(s,c,sheet,total,previous,n=1){return s.commit({sheet:sheet.id,hash:hash(n),purchased:'2026-08-18',operation:op(),reviewed:true,rows:[{customer:c.id,total,previous,matchConfirmed:true}]});}
 test('dia 19 fecha no 20 e dia 20 muda para quinto útil',()=>{
  assert.equal(dueDate('2026-09-19'),'2026-09-20');
  assert.equal(dueDate('2026-09-20'),'2026-10-07');

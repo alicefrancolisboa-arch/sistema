@@ -46,6 +46,9 @@ export function createApp({dbPath=join(process.env.DATA_DIR||join(root,'data'),'
     if(path==='/api/backup'&&req.method==='GET')return send(res,200,await store.backup(),{'Content-Disposition':'attachment; filename="acai-backup-'+new Date().toISOString().slice(0,10)+'.json"'});
     if(req.method!=='POST')return send(res,404,{error:'Página não encontrada.'});
     const b=await body(req);
+    if(path==='/api/customers/archive')return send(res,200,await store.archiveCustomer(b));
+    if(path==='/api/stock/daily')return send(res,200,await store.saveDailyStock(b));
+    if(path==='/api/stock/complements')return send(res,200,await store.saveComplement(b));
     if(path==='/api/customers')return send(res,200,await store.saveCustomer(b));
     if(path==='/api/sales')return send(res,200,await store.sale(b));
     if(path==='/api/payments')return send(res,200,await store.payment(b));
@@ -75,7 +78,7 @@ export function createApp({dbPath=join(process.env.DATA_DIR||join(root,'data'),'
      drafts.set(id,{sheet:sheet.id,hash,expires:Date.now()+3600000});
      return send(res,200,{id,source:result.source||'gemini',rawText:result.rawText||'',warning:result.warning,rows:result.rows.map(r=>{
       const match=customers.find(c=>norm(c.name)===norm(r.name));
-      return {...r,customer:match?.id||'',previous:totals.find(t=>t.customer===match?.id)?.qty||0};
+      return {...r,matchedCustomer:match?.id||'',customer:'',previous:totals.find(t=>t.customer===match?.id)?.qty||0};
      })});
     }
     if(path==='/api/photos/confirm'){

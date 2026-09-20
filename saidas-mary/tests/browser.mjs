@@ -30,13 +30,13 @@ try{
  await page.getByLabel('Identificação da folha').fill('Folha teste');await page.getByRole('button',{name:'Criar folha'}).click();
  await page.locator('#gallery').setInputFiles('artifacts/folha-teste.png');await page.getByRole('button',{name:'Ler nomes e risquinhos'}).click();
  await page.locator('#review-form').waitFor();assert.equal(store.snapshot().sales.length,1);
- await page.locator('[name=reviewed]').check();await page.getByRole('button',{name:'Confirmar e somar apenas os novos risquinhos'}).click();
+ await page.locator('[name=customer-0]').selectOption(store.snapshot().customers[0].id);await page.locator('[name=reviewed]').check();await page.getByRole('button',{name:'Confirmar e somar apenas os novos risquinhos'}).click();
  await page.waitForFunction(()=>!document.querySelector('#review-form'));assert.equal(store.balances().reduce((a,s)=>a+s.cents,0),4000);
  await page.locator('#gallery').setInputFiles('artifacts/folha-teste.png');await page.getByRole('button',{name:'Ler nomes e risquinhos'}).click();
  await page.waitForFunction(()=>document.querySelector('#photo-error')?.textContent.includes('já foi contabilizada'));assert.equal(store.snapshot().imports.length,1);
  await page.locator('#gallery').setInputFiles('artifacts/folha-teste-2.png');await page.getByRole('button',{name:'Ler nomes e risquinhos'}).click();await page.locator('#review-form').waitFor();
  assert.equal(await page.locator('[data-previous="0"]').textContent(),'3');
- await page.locator('[name=reviewed]').check();await page.getByRole('button',{name:'Confirmar e somar apenas os novos risquinhos'}).click();await page.waitForFunction(()=>!document.querySelector('#review-form'));
+ await page.locator('[name=customer-0]').selectOption(store.snapshot().customers[0].id);await page.locator('[name=reviewed]').check();await page.getByRole('button',{name:'Confirmar e somar apenas os novos risquinhos'}).click();await page.waitForFunction(()=>!document.querySelector('#review-form'));
  assert.equal(store.balances().reduce((a,s)=>a+s.cents,0),5000);
  await page.locator('[data-nav=cobrancas]').click();await page.locator('.billing-card').waitFor();assert.ok((await page.locator('a[href^="https://wa.me/"]').getAttribute('href')).includes('5519999999999'));
  await page.locator('[data-nav=historico]').click();await page.getByRole('button',{name:'Desfazer',exact:true}).click();await page.getByRole('button',{name:'Desfazer pagamento',exact:true}).click();
