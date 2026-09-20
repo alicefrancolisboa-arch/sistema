@@ -1,0 +1,24 @@
+services:
+  - type: web
+    name: aloha-casa-do-acai
+    runtime: python
+    plan: free
+    branch: main
+    rootDir: deploy-aloha/aloha-casa-do-acai
+    buildCommand: pip install -r requirements.txt
+    startCommand: gunicorn app:app
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.11.9
+      - key: DATA_DIR
+        value: /opt/render/project/src/data
+      - key: APP_USER
+        value: CASADOACAI
+      - key: APP_PASSWORD
+        value: "151215"
+      - key: GEMINI_API_KEY
+        sync: false
+    disk:
+      name: dados-aloha
+      mountPath: /opt/render/project/src/data
+      sizeGB: 1
