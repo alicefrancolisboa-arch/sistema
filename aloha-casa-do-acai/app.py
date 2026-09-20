@@ -178,10 +178,18 @@ def scan_invoice():
             image=base64.b64encode(f.read()).decode(); prompt='Você é um leitor de nota fiscal brasileira. Extraia todos os produtos. Retorne SOMENTE um JSON válido no formato: {"supplier":"nome do fornecedor", "items":[{"ingredient":"nome do produto", "quantity":0, "unit":"kg|un|L", "unit_cost":0}]}. Para itens vendidos por peso, quantity é o peso em kg e unit_cost é o preço por kg. Para unidades, quantity é a quantidade e unit_cost é o preço unitário. Não invente dados.'
             body=json.dumps({'contents':[{'parts':[{'text':prompt},{'inline_data':{'mime_type':f.mimetype or 'image/jpeg','data':image}}]}],'generationConfig':{'responseMimeType':'application/json'}}).encode()
             # O catálogo desta chave indica Gemini 3.6 Flash como modelo atual para visão.
-            req=urllib.request.Request('https://generativelanguage.googleapis.com/v1beta/models/gemini-3.6-flash:generateContent?key='+key,data=body,headers={'Content-Type':'application/json'})
-            data=json.loads(urllib.request.urlopen(req,timeout=25).read())['candidates'][0]['content']['parts'][0]['text'].replace('```json','').replace('```','').strip()
-            return jsonify(source='Gemini', data=json.loads(data))
-        except Exception as e:
+            model=os.getenv('GEMINI_MODEL','gemini-2.5-flash')
+            models=[model] if model=='gemini-2.5-flash' else [model,'gemini-2.5-flash']
+            last_error=None
+            for selected_model in models:
+                try:
+                    req=urllib.request.Request('https://generativelanguage.googleapis.com/v1beta/models/'+selected_model+':generateContent?key='+key,data=body,headers={'Content-Type':'application/json'})
+                    data=json.loads(urllib.request.urlopen(req,timeout=35).read())['candidates'][0]['content']['parts'][0]['text'].replace('```json','').replace('```','').strip()
+                    return jsonify(source='Gemini', data=json.loads(data))
+                except Exception as attempt_error:
+                    last_error=attempt_error
+                    continue
+            raise last_error`r`n        except Exception as e:
             # Não expõe a chave nem o conteúdo da nota; informa apenas a classe/HTTP para suporte.
             code = getattr(e, 'code', None)
             diagnostic = f'Gemini respondeu HTTP {code}.' if code else f'Falha de conexão Gemini: {type(e).__name__}.'
