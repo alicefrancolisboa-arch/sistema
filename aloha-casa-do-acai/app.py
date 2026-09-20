@@ -179,12 +179,12 @@ def scan_invoice():
             body=json.dumps({'contents':[{'parts':[{'text':prompt},{'inline_data':{'mime_type':f.mimetype or 'image/jpeg','data':image}}]}],'generationConfig':{'responseMimeType':'application/json'}}).encode()
             # O catálogo desta chave indica Gemini 3.6 Flash como modelo atual para visão.
             model=os.getenv('GEMINI_MODEL','gemini-2.5-flash')
-            models=[model] if model=='gemini-2.5-flash' else [model,'gemini-2.5-flash']
+            models=[model] if model=='gemini-2.5-flash' else [model,'gemini-2.5-flash','gemini-2.0-flash']
             last_error=None
             for selected_model in models:
                 try:
                     req=urllib.request.Request('https://generativelanguage.googleapis.com/v1beta/models/'+selected_model+':generateContent?key='+key,data=body,headers={'Content-Type':'application/json'})
-                    data=json.loads(urllib.request.urlopen(req,timeout=35).read())['candidates'][0]['content']['parts'][0]['text'].replace('```json','').replace('```','').strip()
+                    data=json.loads(urllib.request.urlopen(req,timeout=15).read())['candidates'][0]['content']['parts'][0]['text'].replace('```json','').replace('```','').strip()
                     return jsonify(source='Gemini', data=json.loads(data))
                 except Exception as attempt_error:
                     last_error=attempt_error
