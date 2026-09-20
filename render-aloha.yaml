@@ -18,7 +18,3 @@ services:
         value: "151215"
       - key: GEMINI_API_KEY
         sync: false
-    disk:
-      name: dados-aloha
-      mountPath: /opt/render/project/src/data
-      sizeGB: 1
