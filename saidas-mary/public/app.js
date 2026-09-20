@@ -32,6 +32,7 @@ function render(){
 function home(){
  const total=balance(),received=state.payments.filter(p=>p.paid.startsWith(state.today.slice(0,7))).reduce((a,p)=>a+p.cents,0),alerts=reminders(state.today,state.extraHolidays);
  return head('VISÃO GERAL','Olá! Vamos cuidar das vendas?','Tudo o que você precisa para manter o seu açaí em dia.',btn('＋ Nova venda','sale'))+
+ '<section class="quick-actions" aria-label="Registrar vendas"><a class="quick-action" href="#folhas"><strong>▤ Enviar foto da folha</strong><span>Escolha uma imagem ou tire uma foto dos risquinhos.</span></a><button class="quick-action" type="button" data-action="sale"><strong>＋ Venda manual</strong><span>Informe o cliente e a quantidade, sem precisar de foto.</span></button></section>'+
  alerts.map(a=>'<div class="notice"><strong>'+esc(a.label)+' hoje.</strong> '+pendingCustomers(a.due).length+' clientes com saldo até '+prettyDate(a.due)+'. <a href="#cobrancas" data-due="'+a.due+'">Ver lista de cobrança →</a></div>').join('')+
  '<section class="hero"><div><div class="eyebrow">DA SUA FOLHA PARA O SEU CONTROLE</div><h2>Cada risquinho conta.</h2><p>Fotografe a folha, confira os nomes e as quantidades.<br>O aplicativo faz as contas para você.</p><a class="button" href="#folhas">▤ Ler uma folha ↗</a></div><div class="sheet-art" aria-hidden="true"><b>Meu açaí</b><div>Nome <i>||||</i></div><div>Nome <i>||</i></div><div>Nome <i>|||</i></div></div></section>'+
  '<section class="stats"><div class="stat"><label>Total a receber <span>↗</span></label><strong>'+money(total)+'</strong><small>'+pendingCustomers().length+' clientes com saldo pendente</small></div><div class="stat accent"><label>Recebido neste mês <span>✓</span></label><strong>'+money(received)+'</strong><small>Pagamentos que você registrou</small></div><div class="stat"><label>Açaís vendidos <span>▥</span></label><strong>'+state.sales.reduce((a,s)=>a+s.qty,0)+'</strong><small>Cada unidade vale R$ 10,00</small></div><div class="stat"><label>Clientes cadastrados <span>♙</span></label><strong>'+state.customers.length+'</strong><small>Contas organizadas por pessoa</small></div></section>'+
@@ -100,13 +101,13 @@ function openModal(html){$('#modal-content').innerHTML='<button type="button" cl
 function closeModal(){$('#modal').close();}
 function formError(form,e){const target=form.querySelector('.error-text');if(target)target.textContent=e.message;else toast(e.message);}
 async function submit(form,fn){const b=form.querySelector('button[type=submit]');if(b)b.disabled=true;try{await fn(new FormData(form));}catch(e){formError(form,e);}finally{if(b)b.disabled=false;}}
-function customerModal(cid){
+function customerModal(cid,afterSave){
  const c=cid?customer(cid):{name:'',phone:''};
  openModal('<h2>'+(cid?'Editar cliente':'Novo cliente')+'</h2><form id="customer-form"><label class="field">Nome e sobrenome<input name="name" maxlength="80" value="'+esc(c.name)+'" required placeholder="Ex.: Maria Oliveira"></label><label class="field">WhatsApp com DDD <small>Opcional</small><input name="phone" type="tel" inputmode="tel" value="'+esc(c.phone.replace(/^55/,''))+'" placeholder="19 99999-9999"></label><p class="error-text" role="alert"></p><div class="dialog-actions"><button type="submit" class="button">Salvar cliente</button></div></form>');
- $('#customer-form').onsubmit=e=>{e.preventDefault();submit(e.target,async f=>{await api('customers',{id:cid||undefined,name:f.get('name'),phone:f.get('phone')});closeModal();await refresh();toast('Cliente salvo.');});};
+ $('#customer-form').onsubmit=e=>{e.preventDefault();submit(e.target,async f=>{const saved=await api('customers',{id:cid||undefined,name:f.get('name'),phone:f.get('phone')});closeModal();await refresh();toast('Cliente salvo.');if(afterSave)afterSave(saved.id);});};
 }
 function saleModal(cid){
- if(!state.customers.length){customerModal();toast('Cadastre o primeiro cliente para registrar uma venda.');return;}
+ if(!state.customers.length){customerModal(undefined,saleModal);toast('Cadastre o primeiro cliente para registrar uma venda.');return;}
  const operation=id();
  openModal('<h2>Registrar venda</h2><form id="sale-form"><label class="field">Cliente<select name="customer">'+state.customers.map(c=>'<option value="'+c.id+'" '+(c.id===cid?'selected':'')+'>'+esc(c.name)+'</option>').join('')+'</select></label><div class="form-grid"><label class="field">Quantidade de açaís<input name="qty" type="number" min="1" max="10000" step="1" value="1" inputmode="numeric" required></label><label class="field">Data da compra<input name="purchased" type="date" value="'+state.today+'" max="'+state.today+'" required></label></div><div class="notice" id="sale-summary"></div><p class="tiny muted">Para vendas anotadas em uma folha que será fotografada, registre pela leitura da folha. Cadastrar a mesma venda das duas formas gera duplicidade.</p><p class="error-text" role="alert"></p><div class="dialog-actions"><button class="button" type="submit">Salvar venda</button></div></form>');
  const form=$('#sale-form'),summary=()=>{try{$('#sale-summary').textContent=money(Number(form.elements.qty.value)*1000)+' · Vence em '+prettyDate(dueDate(form.elements.purchased.value,state.extraHolidays));}catch{$('#sale-summary').textContent='Confira a data e a quantidade.';}};
@@ -185,7 +186,7 @@ document.addEventListener('click',async e=>{
  try{
   if(action==='close')closeModal();
   if(action==='customer')customerModal(cid);
-  if(action==='sale')saleModal(cid);
+  if(action==='sale'){e.preventDefault();saleModal(cid);}
   if(action==='payment')paymentModal(cid);
   if(action==='sheet')sheetModal();
   if(action==='read-photo')await readPhoto(button);
