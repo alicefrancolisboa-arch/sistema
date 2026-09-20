@@ -10,6 +10,8 @@ DATA_DIR.mkdir(parents=True, exist_ok=True)
 DB = DATA_DIR / 'acai.db'
 app = Flask(__name__)
 app.config['MAX_CONTENT_LENGTH'] = 12 * 1024 * 1024
+APP_USER = os.getenv('APP_USER', 'CASADOACAI')
+APP_PASSWORD = os.getenv('APP_PASSWORD', '151215')
 
 # A chave fica somente no arquivo .env local, nunca no código ou no banco.
 env_file = ROOT / '.env'
@@ -30,6 +32,7 @@ def init_db():
     CREATE TABLE IF NOT EXISTS purchases (id INTEGER PRIMARY KEY, supplier TEXT, created_at TEXT, total REAL, items TEXT);
     CREATE TABLE IF NOT EXISTS recipes (id INTEGER PRIMARY KEY, name TEXT UNIQUE NOT NULL, size TEXT, price REAL, margin REAL DEFAULT 100, items TEXT NOT NULL, active INTEGER DEFAULT 1);
     CREATE TABLE IF NOT EXISTS sales (id INTEGER PRIMARY KEY, recipe_id INTEGER, quantity INTEGER, total REAL, created_at TEXT);
+    CREATE TABLE IF NOT EXISTS shopping_list (id INTEGER PRIMARY KEY, name TEXT NOT NULL, unit TEXT NOT NULL DEFAULT 'un', quantity REAL NOT NULL DEFAULT 1, purchased INTEGER NOT NULL DEFAULT 0, ingredient_id INTEGER, updated_at TEXT);
     ''')
     if not con.execute('SELECT COUNT(*) FROM ingredients').fetchone()[0]:
         rows=[('Açaí tradicional','kg',18,26.90),('Leite em pó','kg',3,31.50),('Creme de avelã','kg',2,58.90),("M&M's",'kg',1.5,48.00),('Copo 500 ml','un',80,.75),('Copo 300 ml','un',100,.58),('Granola','kg',2,19.90),('Morango','kg',4,18.00)]
@@ -61,6 +64,31 @@ def recipe_cost(recipe):
 
 @app.get('/')
 def home(): return render_template('index.html')
+
+@app.post('/api/login')
+def login():
+    d=request.json or {}
+    if d.get('username') == APP_USER and d.get('password') == APP_PASSWORD:
+        return jsonify(ok=True, user=APP_USER)
+    return jsonify(ok=False, error='Usuário ou senha inválidos.'), 401
+
+@app.get('/api/shopping-list')
+def shopping_list():
+    return jsonify(rows('SELECT * FROM shopping_list ORDER BY purchased, name'))
+
+@app.post('/api/shopping-list')
+def shopping_add():
+    d=request.json or {}; name=(d.get('name') or '').strip()
+    if not name: return jsonify(error='Informe o item.'),400
+    con=db(); con.execute('INSERT INTO shopping_list(name,unit,quantity,purchased,ingredient_id,updated_at) VALUES(?,?,?,?,?,?)',(name,d.get('unit','un'),float(d.get('quantity',1)),int(bool(d.get('purchased'))),d.get('ingredient_id'),datetime.now().isoformat())); con.commit(); con.close(); return jsonify(ok=True)
+
+@app.route('/api/shopping-list/<int:item_id>', methods=['PUT','DELETE'])
+def shopping_detail(item_id):
+    con=db()
+    if request.method=='DELETE': con.execute('DELETE FROM shopping_list WHERE id=?',(item_id,))
+    else:
+        d=request.json or {}; con.execute('UPDATE shopping_list SET name=?,unit=?,quantity=?,purchased=?,updated_at=? WHERE id=?',(d.get('name',''),d.get('unit','un'),float(d.get('quantity',1)),int(bool(d.get('purchased'))),datetime.now().isoformat(),item_id))
+    con.commit(); con.close(); return jsonify(ok=True)
 
 @app.get('/api/dashboard')
 def dashboard():
