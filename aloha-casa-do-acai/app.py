@@ -207,7 +207,7 @@ def scan_invoice():
             body=json.dumps({'contents':[{'parts':[{'text':prompt},{'inline_data':{'mime_type':f.mimetype or 'image/jpeg','data':image}}]}],'generationConfig':{'responseMimeType':'application/json'}}).encode()
             # O catálogo desta chave indica Gemini 3.6 Flash como modelo atual para visão.
             model=os.getenv('GEMINI_MODEL','gemini-2.5-flash')
-            models=[model] if model=='gemini-2.5-flash' else [model,'gemini-2.5-flash','gemini-2.0-flash']
+            models=[model] if model=='gemini-2.5-flash' else [model,'gemini-2.5-flash','gemini-2.5-flash-lite','gemini-2.0-flash']
             last_error=None
             for selected_model in models:
                 try:
