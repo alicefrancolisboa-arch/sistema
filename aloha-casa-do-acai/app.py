@@ -217,7 +217,8 @@ def scan_invoice():
                 except Exception as attempt_error:
                     last_error=attempt_error
                     continue
-            raise last_error`r`n        except Exception as e:
+            raise last_error
+        except Exception as e:
             # Não expõe a chave nem o conteúdo da nota; informa apenas a classe/HTTP para suporte.
             code = getattr(e, 'code', None)
             diagnostic = f'Gemini respondeu HTTP {code}.' if code else f'Falha de conexão Gemini: {type(e).__name__}.'
