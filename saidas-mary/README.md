@@ -29,7 +29,7 @@ O banco do computador não é enviado automaticamente. Para migrar dados existen
 
 ## Android
 
-Baixe `dist/Saidas-Mary.apk` ou `/baixar-apk` no novo servidor. Na primeira abertura, informe uma vez o endereço HTTPS atribuído ao Saídas Mary pelo Render. Depois ele fica salvo. Com o serviço publicado, o computador pode ficar desligado. O APK não contém chaves; o app Aloha é separado.
+Baixe `dist/Saidas-Mary.apk` ou `/baixar-apk` no novo servidor. A versão 1.1.1 abre automaticamente https://saidas-mary.onrender.com e migra a configuração antiga que dependia do PC. Com o serviço publicado, o computador pode ficar desligado. O APK não contém chaves; o app Aloha é separado.
 
 ## Verificações
 
