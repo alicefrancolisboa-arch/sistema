@@ -82,7 +82,7 @@ function billing(){
 }
 function billMessage(c){
  const late=state.balances.filter(s=>s.customer===c.id&&s.due<selectedDue).reduce((a,s)=>a+s.cents,0);
- return 'Olá, '+c.name+'! Seu saldo de açaí para pagamento até '+prettyDate(selectedDue)+' é de '+money(c.balance)+'.'+(late?' Esse valor inclui '+money(late)+' de cobranças anteriores.':'')+' Obrigado! — Saídas Mary';
+ return 'Olá, '+c.name+'! Seu saldo de açaí para pagamento até '+prettyDate(selectedDue)+' é de '+money(c.balance)+'.'+(late?' Esse valor inclui '+money(late)+' de cobranças anteriores.':'')+' Obrigado! — Açaí da Mary';
 }
 function history(){
  const entries=[...state.sales.map(s=>({...s,kind:'Venda',value:s.qty*1000,when:s.purchased})),...state.payments.map(p=>({...p,kind:'Pagamento',value:p.cents,when:p.paid}))].sort((a,b)=>b.created.localeCompare(a.created));
@@ -156,7 +156,7 @@ async function copy(text){
  catch{openModal('<h2>Copie o texto</h2><p class="tiny muted">Toque e segure para selecionar e copiar.</p><textarea id="copy-fallback" rows="8" readonly>'+esc(text)+'</textarea>');$('#copy-fallback').select();}
 }
 function login(){
- $('#main').innerHTML='<section class="panel login"><div class="eyebrow">SAÍDAS MARY</div><h1>Entre na sua loja.</h1><form id="login-form"><label class="field">Senha da loja<input name="password" type="password" autocomplete="current-password" required></label><p class="error-text" role="alert"></p><button type="submit" class="button full">Entrar</button></form></section>';
+ $('#main').innerHTML='<section class="panel login"><div class="eyebrow">AÇAÍ DA MARY</div><h1>Entre na sua loja.</h1><form id="login-form"><label class="field">Senha da loja<input name="password" type="password" autocomplete="current-password" required></label><p class="error-text" role="alert"></p><button type="submit" class="button full">Entrar</button></form></section>';
  $('#login-form').onsubmit=async e=>{e.preventDefault();const form=e.target;await submit(form,async f=>{const response=await fetch('/api/login',{method:'POST',headers:{'Content-Type':'application/json','X-Acai-App':'1'},body:JSON.stringify({password:f.get('password')})});const data=await response.json();if(!response.ok)throw Error(data.error);await refresh();});};
 }
 function bindForms(){

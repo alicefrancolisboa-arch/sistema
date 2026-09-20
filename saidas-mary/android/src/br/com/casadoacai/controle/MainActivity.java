@@ -39,20 +39,20 @@ public class MainActivity extends Activity {
   if(web!=null){web.destroy();web=null;}
   ScrollView scroll=new ScrollView(this);
   LinearLayout box=new LinearLayout(this);box.setOrientation(1);box.setPadding(dp(26),dp(34),dp(26),dp(24));scroll.addView(box);
-  box.addView(text("Saídas Mary",32));box.addView(text("Seu controle, também no celular.",18));
-  TextView help=text("Informe o endereço HTTPS do servidor Saídas Mary. Com o servidor online, você pode acessar pela internet sem deixar o computador ligado.",15);help.setTextColor(Color.DKGRAY);box.addView(help);
-  box.addView(text("Endereço do Saídas Mary",14));
+  box.addView(text("Açaí da Mary",32));box.addView(text("Seu controle, também no celular.",18));
+  TextView help=text("Informe o endereço HTTPS do servidor Açaí da Mary. Com o servidor online, você pode acessar pela internet sem deixar o computador ligado.",15);help.setTextColor(Color.DKGRAY);box.addView(help);
+  box.addView(text("Endereço do Açaí da Mary",14));
   EditText input=new EditText(this);input.setSingleLine(true);input.setInputType(17);input.setHint("https://seu-endereco.onrender.com");input.setText(origin);box.addView(input);
   TextView error=text("",14);error.setTextColor(Color.rgb(170,50,50));box.addView(error);
   Button connect=button("Conectar à minha loja");box.addView(connect);
   connect.setOnClickListener(v->{try{origin=validate(input.getText().toString());getPreferences(0).edit().putString("server",origin).putBoolean("cloudSetupV3",true).apply();CookieManager.getInstance().removeAllCookies(null);openApp();}catch(Exception e){error.setText("Use o endereço local do PC (http://192.168...) ou um endereço com HTTPS. Não inclua senha no endereço.");}});
-  TextView info=text("A senha é informada na próxima tela. Clientes e vendas ficam no servidor escolhido. Use o endereço do Saídas Mary, separado do Aloha. A chave do Gemini não fica neste APK.",13);info.setTextColor(Color.GRAY);box.addView(info);
+  TextView info=text("A senha é informada na próxima tela. Clientes e vendas ficam no servidor escolhido. Use o endereço do Açaí da Mary, separado do Aloha. A chave do Gemini não fica neste APK.",13);info.setTextColor(Color.GRAY);box.addView(info);
   setContentView(scroll);
  }
  private void openApp(){
   layout=new LinearLayout(this);layout.setOrientation(1);layout.setBackgroundColor(Color.rgb(255,247,251));
   LinearLayout bar=new LinearLayout(this);bar.setPadding(dp(10),dp(4),dp(10),dp(4));bar.setGravity(Gravity.CENTER_VERTICAL);
-  TextView title=text("Saídas Mary",16);bar.addView(title,new LinearLayout.LayoutParams(0,dp(48),1));
+  TextView title=text("Açaí da Mary",16);bar.addView(title,new LinearLayout.LayoutParams(0,dp(48),1));
   Button reload=button("↻");reload.setContentDescription("Recarregar");bar.addView(reload,new LinearLayout.LayoutParams(dp(52),dp(48)));
   Button config=button("⋮");config.setContentDescription("Configurar conexão");bar.addView(config,new LinearLayout.LayoutParams(dp(52),dp(48)));layout.addView(bar);
   web=new WebView(this);web.setBackgroundColor(Color.rgb(255,247,251));layout.addView(web,new LinearLayout.LayoutParams(-1,0,1));setContentView(layout);
@@ -86,7 +86,7 @@ public class MainActivity extends Activity {
    if(!sameOrigin(url))return;
    try{
     DownloadManager.Request r=new DownloadManager.Request(Uri.parse(url));r.addRequestHeader("Cookie",CookieManager.getInstance().getCookie(url));r.addRequestHeader("User-Agent",ua);
-    r.setTitle("Backup Saídas Mary");r.setMimeType(mime);r.setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED);
+    r.setTitle("Backup Açaí da Mary");r.setMimeType(mime);r.setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED);
     r.setDestinationInExternalFilesDir(this,Environment.DIRECTORY_DOWNLOADS,"acai-backup-"+System.currentTimeMillis()+".json");
     ((DownloadManager)getSystemService(DOWNLOAD_SERVICE)).enqueue(r);Toast.makeText(this,"Salvando cópia na pasta de downloads do aplicativo.",Toast.LENGTH_LONG).show();
    }catch(Exception e){Toast.makeText(this,"Não foi possível baixar. Faça a cópia pelo computador.",Toast.LENGTH_LONG).show();}
