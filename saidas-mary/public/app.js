@@ -156,8 +156,8 @@ async function copy(text){
  catch{openModal('<h2>Copie o texto</h2><p class="tiny muted">Toque e segure para selecionar e copiar.</p><textarea id="copy-fallback" rows="8" readonly>'+esc(text)+'</textarea>');$('#copy-fallback').select();}
 }
 function login(){
- $('#main').innerHTML='<section class="panel login"><div class="eyebrow">AÇAÍ DA MARY</div><h1>Entre na sua loja.</h1><form id="login-form"><label class="field">Senha da loja<input name="password" type="password" autocomplete="current-password" required></label><p class="error-text" role="alert"></p><button type="submit" class="button full">Entrar</button></form></section>';
- $('#login-form').onsubmit=async e=>{e.preventDefault();const form=e.target;await submit(form,async f=>{const response=await fetch('/api/login',{method:'POST',headers:{'Content-Type':'application/json','X-Acai-App':'1'},body:JSON.stringify({password:f.get('password')})});const data=await response.json();if(!response.ok)throw Error(data.error);await refresh();});};
+ $('#main').innerHTML='<section class="panel login"><div class="eyebrow">AÇAÍ DA MARY</div><h1>Entre na sua loja.</h1><form id="login-form"><label class="field">Usuário<input name="username" value="CASADOACAI" autocomplete="username" required></label><label class="field">Senha da loja<input name="password" type="password" autocomplete="current-password" required></label><p class="error-text" role="alert"></p><button type="submit" class="button full">Entrar</button></form></section>';
+ $('#login-form').onsubmit=async e=>{e.preventDefault();const form=e.target;await submit(form,async f=>{const response=await fetch('/api/login',{method:'POST',headers:{'Content-Type':'application/json','X-Acai-App':'1'},body:JSON.stringify({username:f.get('username'),password:f.get('password')})});const data=await response.json();if(!response.ok)throw Error(data.error);await refresh();});};
 }
 function bindForms(){
  const ds=$('#stock-day');if(ds)ds.onchange=()=>{stockDay=ds.value;render();};

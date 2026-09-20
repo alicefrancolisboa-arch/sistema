@@ -8,7 +8,7 @@ import { CloudStore } from './lib/cloud-store.mjs';
 import { Store,norm } from './lib/store.mjs';
 import { recognize } from './lib/vision.mjs';
 const root=dirname(fileURLToPath(import.meta.url));
-export function createApp({dbPath=join(process.env.DATA_DIR||join(root,'data'),'acai.sqlite'),apiKey=process.env.GEMINI_API_KEY||'',password=process.env.APP_PASSWORD||'',model=process.env.GEMINI_MODEL||'gemini-3.6-flash',vision=recognize,cloud=null}={}){
+export function createApp({dbPath=join(process.env.DATA_DIR||join(root,'data'),'acai.sqlite'),apiKey=process.env.GEMINI_API_KEY||'',password=process.env.APP_PASSWORD||'',username=process.env.APP_USER||'CASADOACAI',model=process.env.GEMINI_MODEL||'gemini-3.6-flash',vision=recognize,cloud=null}={}){
  if(!cloud&&dbPath!==':memory:')mkdirSync(dirname(dbPath),{recursive:true});
  const store=cloud||new Store(dbPath),sessions=new Map(),drafts=new Map(),attempts=new Map();
  let reading=false;
@@ -34,7 +34,7 @@ export function createApp({dbPath=join(process.env.DATA_DIR||join(root,'data'),'
     const ip=req.socket.remoteAddress,entry=attempts.get(ip)||{count:0,until:Date.now()+600000};
     if(entry.until<Date.now()){entry.count=0;entry.until=Date.now()+600000;}
     if(entry.count>=10)return send(res,429,{error:'Muitas tentativas. Aguarde dez minutos.'});
-    const b=await body(req);if(!samePassword(b.password)){entry.count++;attempts.set(ip,entry);return send(res,401,{error:'Senha incorreta.'});}
+    const b=await body(req);if((b.username&&b.username!==username)||!samePassword(b.password)){entry.count++;attempts.set(ip,entry);return send(res,401,{error:'Usuário ou senha incorretos.'});}
     attempts.delete(ip);for(const [id,expires]of sessions)if(expires<Date.now())sessions.delete(id);
     const token=randomBytes(32).toString('hex');sessions.set(token,Date.now()+12*3600000);
     return send(res,200,{ok:true},{'Set-Cookie':'acai_session='+token+'; HttpOnly; SameSite=Strict; Path=/; Max-Age=43200'+(process.env.COOKIE_SECURE==='true'?'; Secure':'')});
