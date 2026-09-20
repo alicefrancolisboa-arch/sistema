@@ -1,31 +1,38 @@
-# Saídas Mary
+# Saídas Mary — configuração gratuita
 
-Controle separado do Aloha: clientes, vendas de R$ 10, leitura de folhas pelo Gemini com OCR de reserva, pagamentos e cobranças. Layout rosa, inspirado na organização do painel de referência.
+Aplicativo separado do Aloha, com clientes, vendas de R$ 10, leitura de folhas pelo Gemini e OCR de reserva, pagamentos e cobranças. Mantém o layout rosa.
 
-## Publicar sem alterar o Aloha
+## Publicação
 
-Este aplicativo está em `saidas-mary/`, na branch `saidas-mary`. O Aloha e sua configuração permanecem intactos. Não altere o serviço `sistema-5huz` e não troque a branch dele.
+[Configurar no Render](https://render.com/deploy?repo=https://github.com/alicefrancolisboa-arch/sistema/tree/saidas-mary)
 
-No Render, crie um **novo Blueprint**, selecione este repositório e a branch `saidas-mary`. O arquivo `render.yaml` da raiz cria somente o novo serviço Saídas Mary, com seu próprio disco. Confira o custo do plano de 0,5 CPU / 512 MB e do disco de 1 GB antes de confirmar a criação; essa configuração não é gratuita.
+O Blueprint da raiz cria somente o novo serviço `saidas-mary`, na branch `saidas-mary`, com plano **free**, sem disco pago. O serviço Aloha e a branch main permanecem intactos.
 
-Informe a chave Gemini no campo GEMINI_API_KEY do Render. A chave não está no repositório nem no APK. O Render gera APP_PASSWORD; consulte essa variável em Environment para obter a senha de entrada. Use o endereço HTTPS atribuído ao NOVO serviço, e não o endereço do Aloha.
+1. Crie um banco no plano Free do Turso e um token com leitura e escrita.
+2. Abra o link acima, usando um NOVO Blueprint.
+3. TURSO_DATABASE_URL já contém o endereço do banco informado pela proprietária. TURSO_AUTH_TOKEN recebe o token criado no Turso.
+4. GEMINI_API_KEY recebe a chave Gemini da proprietária. Ela fica somente no Render; nunca no GitHub ou APK. A gratuidade da hospedagem não altera as cotas e cobranças da conta Gemini.
+5. O Render gera APP_PASSWORD; consulte essa variável em Environment para obter a senha do aplicativo.
+6. Confirme que o serviço está no plano Free e sem disco antes de publicar. Após ficar Live, abra o endereço HTTPS do NOVO serviço.
 
-O novo serviço usa Node 24, `npm ci --ignore-scripts`, `npm start`, HOST=0.0.0.0, a porta PORT fornecida pelo Render e DATA_DIR=/var/data/saidas-mary. O disco persistente é montado em /var/data. `/healthz` é a verificação de saúde, sem informações de clientes. Cookies de login usam HTTPS.
+O Render gratuito pode suspender o serviço enquanto não é usado; a primeira abertura pode demorar. Os dados ficam no Turso, respeitando as cotas do plano gratuito. Se o banco estiver indisponível, o app informa erro, em vez de fingir que salvou ou mostrar uma loja vazia.
 
-O banco local do computador não é enviado automaticamente. Se houver dados, use Ajustes → Exportar backup no app local. No novo servidor vazio, importe esse arquivo em Ajustes. Guarde uma cópia antes de qualquer restauração.
+## Armazenamento
+
+STORAGE_DRIVER=turso usa o banco remoto como fonte oficial. Cada operação lê a versão atual, aplica as regras em SQLite isolado na memória e salva com comparação de versão. Isso evita perda de dados entre dois aparelhos. Vendas e pagamentos preservam identificadores de repetição; os totais das folhas e os hashes de fotos também são preservados. Uma restauração mantém no banco a versão anterior em previous_payload.
+
+Nenhum dado depende dos arquivos temporários do Render. Sem as credenciais do Turso, o servidor não inicia nesse modo. Fotos, tokens e chaves Gemini não são armazenados no registro das vendas.
+
+Esta versão atende uma pequena loja e limita o registro de dados a 8 MB. Ao atingir o limite, novos lançamentos são bloqueados com aviso; os dados existentes continuam disponíveis para exportação. Faça backups periódicos em Ajustes.
+
+O banco do computador não é enviado automaticamente. Para migrar dados existentes, exporte o backup no app local e importe no novo servidor vazio.
 
 ## Android
 
-Baixe `dist/Saidas-Mary.apk` ou abra `/baixar-apk` no novo servidor. O APK usa o mesmo identificador e assinatura da versão Mary anterior para permitir atualização. Na primeira abertura desta atualização, informe uma vez o endereço HTTPS do novo serviço. Isso remove a dependência do IP antigo. Depois, o endereço fica salvo. O aplicativo Aloha é separado.
+Baixe `dist/Saidas-Mary.apk` ou `/baixar-apk` no novo servidor. Na primeira abertura, informe uma vez o endereço HTTPS atribuído ao Saídas Mary pelo Render. Depois ele fica salvo. Com o serviço publicado, o computador pode ficar desligado. O APK não contém chaves; o app Aloha é separado.
 
-O endereço definitivo só existe após o Render criar o novo serviço. Nenhum endereço hipotético foi gravado no APK. Com o serviço online, o PC pode ficar desligado. É necessária conexão à internet.
+## Verificações
 
-## Regras e leitura
+Node 24: `npm ci --ignore-scripts` e `npm test`. A suíte cobre as regras financeiras, revisão e repetição de fotos, autenticação e armazenamento remoto com falhas e concorrência simuladas. A conexão real com Turso deve ser validada após cadastrar o token no Render.
 
-Cada traço vale R$ 10; quadrado fechado vale 4; quadrado com diagonal vale 5. Compras até dia 19 vencem dia 20; a partir de dia 20, no quinto dia útil do mês seguinte. Considera segunda a sexta e os feriados cadastrados para Piracicaba. Fotos passam por revisão antes de salvar e somente o aumento de contagem é somado.
-
-O OCR não garante contagem de manuscritos: se Gemini estiver indisponível, confira nomes e preencha quantidades. Dados não são inventados nem gravados sem confirmação. Clientes recebem mensagens pelo WhatsApp somente quando você abre/envia.
-
-## Verificação local
-
-`npm ci --ignore-scripts`, depois `npm test`. `npm start` abre em http://127.0.0.1:3210; configure .env a partir de .env.example. Não publique .env, chaves, bancos ou backups.
+Sem STORAGE_DRIVER=turso, o desenvolvimento local continua usando SQLite. Configure .env a partir de .env.example. Não publique .env, tokens, senhas, bancos ou backups.

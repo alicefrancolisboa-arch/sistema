@@ -2,7 +2,7 @@ services:
   - type: web
     name: saidas-mary
     runtime: node
-    plan: 0.5c-512mb
+    plan: free
     branch: saidas-mary
     rootDir: saidas-mary
     buildCommand: npm ci --ignore-scripts
@@ -18,8 +18,12 @@ services:
         value: "24"
       - key: HOST
         value: 0.0.0.0
-      - key: DATA_DIR
-        value: /var/data/saidas-mary
+      - key: STORAGE_DRIVER
+        value: turso
+      - key: TURSO_DATABASE_URL
+        value: libsql://saidas-mary-casadoacai.aws-eu-west-1.turso.io
+      - key: TURSO_AUTH_TOKEN
+        sync: false
       - key: COOKIE_SECURE
         value: "true"
       - key: APP_PASSWORD
@@ -28,7 +32,3 @@ services:
         sync: false
       - key: GEMINI_MODEL
         value: gemini-3.6-flash
-    disk:
-      name: saidas-mary-dados
-      mountPath: /var/data
-      sizeGB: 1
