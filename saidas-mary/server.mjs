@@ -103,7 +103,7 @@ export function createApp({dbPath=join(process.env.DATA_DIR||join(root,'data'),'
 }
 if(process.argv[1] && fileURLToPath(import.meta.url)===process.argv[1]){
  const host=process.env.HOST||(process.env.RENDER?'0.0.0.0':'127.0.0.1'),port=Number(process.env.PORT||3210),password=process.env.APP_PASSWORD||'';
- if(!['127.0.0.1','localhost','::1'].includes(host)&&password.length<12)throw Error('Defina APP_PASSWORD com pelo menos 12 caracteres para acesso pela rede.');
+ if(!['127.0.0.1','localhost','::1'].includes(host)&&password.length<6)throw Error('Defina APP_PASSWORD com pelo menos 6 caracteres para acesso pela rede.');
  const useCloud=process.env.STORAGE_DRIVER==='turso';
  if(process.env.RENDER&&!useCloud&&!process.env.DATA_DIR)throw Error('Configure o banco Turso antes de usar o Render gratuito.');
  if(useCloud&&(!process.env.TURSO_DATABASE_URL||!process.env.TURSO_AUTH_TOKEN))throw Error('Configure TURSO_DATABASE_URL e TURSO_AUTH_TOKEN no Render.');
