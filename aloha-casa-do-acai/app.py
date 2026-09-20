@@ -206,14 +206,20 @@ def scan_invoice():
             image=base64.b64encode(f.read()).decode(); prompt='Você é um leitor de nota fiscal brasileira. Extraia todos os produtos. Retorne SOMENTE um JSON válido no formato: {"supplier":"nome do fornecedor", "items":[{"ingredient":"nome do produto", "quantity":0, "unit":"kg|un|L", "unit_cost":0}]}. Para itens vendidos por peso, quantity é o peso em kg e unit_cost é o preço por kg. Para unidades, quantity é a quantidade e unit_cost é o preço unitário. Não invente dados.'
             body=json.dumps({'contents':[{'parts':[{'text':prompt},{'inline_data':{'mime_type':f.mimetype or 'image/jpeg','data':image}}]}],'generationConfig':{'responseMimeType':'application/json'}}).encode()
             # O catálogo desta chave indica Gemini 3.6 Flash como modelo atual para visão.
-            model='gemini-2.5-flash'
-            models=[model] if model=='gemini-2.5-flash' else [model,'gemini-2.5-flash','gemini-2.5-flash-lite','gemini-2.0-flash']
+            model='gemini-3.6-flash'
+            models=[model,'gemini-3.6-flash-latest']
             last_error=None
             for selected_model in models:
                 try:
                     req=urllib.request.Request('https://generativelanguage.googleapis.com/v1beta/models/'+selected_model+':generateContent?key='+key,data=body,headers={'Content-Type':'application/json'})
-                    data=json.loads(urllib.request.urlopen(req,timeout=15).read())['candidates'][0]['content']['parts'][0]['text'].replace('```json','').replace('```','').strip()
-                    return jsonify(source='Gemini', data=json.loads(data))
+                    for attempt in range(2):
+                        try:
+                            data=json.loads(urllib.request.urlopen(req,timeout=12).read())['candidates'][0]['content']['parts'][0]['text'].replace('```json','').replace('```','').strip()
+                            return jsonify(source='Gemini', data=json.loads(data))
+                        except Exception as retry_error:
+                            last_error=retry_error
+                            if getattr(retry_error,'code',None)!=503 or attempt==1: raise
+                            import time; time.sleep(1)
                 except Exception as attempt_error:
                     last_error=attempt_error
                     continue
