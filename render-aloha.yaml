@@ -4,7 +4,7 @@ services:
     runtime: python
     plan: free
     branch: main
-    rootDir: deploy-aloha/aloha-casa-do-acai
+    rootDir: aloha-casa-do-acai
     buildCommand: pip install -r requirements.txt
     startCommand: gunicorn app:app
     envVars:
@@ -18,3 +18,4 @@ services:
         value: "151215"
       - key: GEMINI_API_KEY
         sync: false
+
