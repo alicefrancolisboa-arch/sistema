@@ -1,2 +1,10 @@
 .history{margin-top:20px}.actions{white-space:nowrap;display:flex;gap:8px;align-items:center}.actions button{border:0;background:#f9e7f1;color:#9c155f;border-radius:7px;padding:7px 9px;font-size:12px;font-weight:700;cursor:pointer}.actions button:hover{background:#f0cce0}.actions .danger{background:#fff0ee;color:#c64b3e}.actions .danger:hover{background:#f9d7d2}.card-actions{justify-content:flex-end;margin-top:16px;border-top:1px solid var(--line);padding-top:14px}@media(max-width:800px){td .actions{display:grid;gap:4px}.sale-row>.actions{margin-left:8px}.history{overflow:auto}}
 .scan-help{font-size:14px;color:var(--muted);margin:0 0 15px}.scan-choice{display:flex!important;gap:12px;align-items:flex-start;border:1px solid var(--line);border-radius:10px;padding:13px;margin:9px 0!important;cursor:pointer}.scan-choice input{width:19px!important;height:19px;margin:2px 0 0!important;accent-color:#bd1268}.scan-choice b{display:block;font-size:14px}.scan-choice small{display:block;color:var(--muted);margin-top:3px}.scan-modal{max-width:590px}
+.purchase-box{width:min(1080px,96vw)}
+.purchase-line{display:grid;grid-template-columns:2fr 1.25fr .7fr .9fr .8fr 1fr auto;gap:8px;align-items:end;border-bottom:1px solid var(--line);padding:10px 0;overflow-x:auto}
+.purchase-line label{min-width:90px;margin:0!important;font-size:11px!important}
+.purchase-line label:first-child{min-width:170px}
+.purchase-line .link{white-space:nowrap}
+.portion-row{display:grid!important;grid-template-columns:1fr auto 110px;gap:12px;align-items:center;border-bottom:1px solid var(--line);padding:9px 0}
+.portion-row small{color:var(--muted);font-weight:400}
+@media(max-width:800px){.purchase-line{min-width:800px}.purchase-box{overflow-x:auto}.portion-row{grid-template-columns:1fr auto 80px}}
