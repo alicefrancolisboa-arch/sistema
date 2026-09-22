@@ -33,6 +33,9 @@ class InventoryFlowTests(unittest.TestCase):
         self.client = aloha.app.test_client()
 
     def test_purchase_converts_package_content_to_stock_units_and_cost(self):
+        con = aloha.db()
+        con.execute("UPDATE ingredients SET stock=0,package_size=0 WHERE name='Copo 500 ml'")
+        con.commit(); con.close()
         result = self.client.post('/api/purchases', json={'supplier': 'Teste', 'items': [
             {'ingredient': 'Leite condensado', 'category': 'insumo', 'package_count': 1, 'content_per_package': 395, 'unit': 'g', 'package_total': 7.90},
             {'ingredient': 'Copo 500 ml', 'category': 'embalagem', 'package_count': 1, 'content_per_package': 50, 'unit': 'un', 'package_total': 25.00},
@@ -44,8 +47,28 @@ class InventoryFlowTests(unittest.TestCase):
         self.assertEqual(inventory['Leite condensado']['stock'], 395)
         self.assertAlmostEqual(inventory['Leite condensado']['cost'], .02)
         self.assertEqual(inventory['Copo 500 ml']['category'], 'embalagem')
-        self.assertEqual(inventory['Copo 500 ml']['stock'], 130)
+        self.assertEqual(inventory['Copo 500 ml']['stock'], 50)
+        self.assertEqual(inventory['Copo 500 ml']['package_size'], 50)
         self.assertAlmostEqual(inventory['Copo 500 ml']['cost'], .5)
+
+    def test_packaging_stock_retains_package_size_when_sales_deduct_units(self):
+        con = aloha.db()
+        con.execute("UPDATE ingredients SET stock=0,package_size=0 WHERE name='Copo 500 ml'")
+        con.commit(); con.close()
+        bought = self.client.post('/api/purchases', json={'items': [
+            {'ingredient': 'Copo 500 ml', 'category': 'embalagem', 'package_count': 1, 'content_per_package': 50, 'unit': 'un', 'package_total': 25.00},
+        ]})
+        self.assertEqual(bought.status_code, 200)
+        item = next(x for x in self.client.get('/api/ingredients').json if x['name'] == 'Copo 500 ml')
+        self.assertEqual((item['package_size'], item['stock']), (50, 50))
+        recipe = next(row for row in self.client.get('/api/recipes').json if row['name'] == 'Copo 500 ml')
+        sold = self.client.post('/api/sales', json={'request_id': 'test-cup-pack', 'items': [
+            {'recipe_id': recipe['id'], 'quantity': 1, 'complements': []},
+        ]})
+        self.assertEqual(sold.status_code, 200, sold.json)
+        item = next(x for x in self.client.get('/api/ingredients').json if x['name'] == 'Copo 500 ml')
+        self.assertEqual(item['package_size'], 50)
+        self.assertEqual(item['stock'], 49)
 
     def test_product_specific_topping_portion_is_deducted_in_grams(self):
         self.client.post('/api/purchases', json={'items': [
@@ -96,6 +119,9 @@ class InventoryFlowTests(unittest.TestCase):
         con.execute('INSERT INTO purchases VALUES(1,?,?,?,?)', ('Teste', '2026-09-01', 10, json.dumps([
             {'ingredient': 'Leite condensado', 'quantity': .5, 'unit_cost': 20, 'unit': 'kg'},
         ])))
+        con.execute('INSERT INTO purchases VALUES(2,?,?,?,?)', ('Teste', '2026-09-02', 25, json.dumps([
+            {'ingredient': 'Copo 500 ml', 'category': 'embalagem', 'quantity': 50, 'unit_cost': .5, 'unit': 'un', 'purchase_unit': 'un', 'package_count': 1, 'content_per_package': 50, 'package_total': 25},
+        ])))
         con.execute('INSERT INTO sales VALUES(1,1,1,27,?,?,?)', ('2026-09-01', json.dumps([
             {'ingredient_id': 1, 'stock_delta': .33, 'base_quantity': 330, 'unit': 'g'},
             {'ingredient_id': 2, 'stock_delta': .05, 'base_quantity': 50, 'unit': 'g'},
@@ -111,6 +137,7 @@ class InventoryFlowTests(unittest.TestCase):
             con = aloha.db()
             try:
                 milk = con.execute("SELECT unit,stock,cost,category FROM ingredients WHERE name='Leite condensado'").fetchone()
+                cup = con.execute("SELECT package_size FROM ingredients WHERE name='Copo 500 ml'").fetchone()
                 recipe = json.loads(con.execute("SELECT items FROM recipes WHERE id=1").fetchone()['items'])
                 purchase = json.loads(con.execute('SELECT items FROM purchases WHERE id=1').fetchone()['items'])[0]
                 snapshot = json.loads(con.execute("SELECT stock_snapshot FROM sales WHERE id=1").fetchone()['stock_snapshot'])
@@ -121,6 +148,7 @@ class InventoryFlowTests(unittest.TestCase):
             self.assertEqual(milk['stock'], 2000)
             self.assertAlmostEqual(milk['cost'], .02)
             self.assertEqual(milk['category'], 'insumo')
+            self.assertEqual(cup['package_size'], 50)
             self.assertEqual(next(x['qty'] for x in recipe if x['ingredient'] == 'Leite condensado'), 50)
             self.assertEqual(purchase['quantity'], 500)
             self.assertAlmostEqual(purchase['unit_cost'], .02)

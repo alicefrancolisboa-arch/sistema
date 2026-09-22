@@ -28,7 +28,7 @@ def db():
 def init_db():
     con = db()
     con.executescript('''
-    CREATE TABLE IF NOT EXISTS ingredients (id INTEGER PRIMARY KEY, name TEXT UNIQUE NOT NULL, unit TEXT NOT NULL, stock REAL NOT NULL DEFAULT 0, cost REAL NOT NULL DEFAULT 0, updated_at TEXT, category TEXT NOT NULL DEFAULT 'insumo');
+    CREATE TABLE IF NOT EXISTS ingredients (id INTEGER PRIMARY KEY, name TEXT UNIQUE NOT NULL, unit TEXT NOT NULL, stock REAL NOT NULL DEFAULT 0, cost REAL NOT NULL DEFAULT 0, updated_at TEXT, category TEXT NOT NULL DEFAULT 'insumo', package_size REAL NOT NULL DEFAULT 0);
     CREATE TABLE IF NOT EXISTS purchases (id INTEGER PRIMARY KEY, supplier TEXT, created_at TEXT, total REAL, items TEXT);
     CREATE TABLE IF NOT EXISTS recipes (id INTEGER PRIMARY KEY, name TEXT UNIQUE NOT NULL, size TEXT, price REAL, margin REAL DEFAULT 100, items TEXT NOT NULL, active INTEGER DEFAULT 1);
     CREATE TABLE IF NOT EXISTS sales (id INTEGER PRIMARY KEY, recipe_id INTEGER, quantity INTEGER, total REAL, created_at TEXT);
@@ -46,6 +46,8 @@ def init_db():
     ingredient_columns={r['name'] for r in con.execute('PRAGMA table_info(ingredients)')}
     migrate_categories='category' not in ingredient_columns
     if migrate_categories: con.execute("ALTER TABLE ingredients ADD COLUMN category TEXT NOT NULL DEFAULT 'insumo'")
+    migrate_package_size='package_size' not in ingredient_columns
+    if migrate_package_size: con.execute('ALTER TABLE ingredients ADD COLUMN package_size REAL NOT NULL DEFAULT 0')
     # Normalize legacy kilogram stocks, recipes, invoices and reversal snapshots to grams.
     # The unit change makes this migration idempotent and preserves each historical cost/value.
     for ingredient in con.execute("SELECT id,name,stock,cost FROM ingredients WHERE lower(unit) IN ('kg','quilo','quilograma')").fetchall():
@@ -99,6 +101,15 @@ def init_db():
             category='embalagem' if any(word in ingredient['name'].casefold() for word in packaging_words) else 'insumo'
             con.execute('UPDATE ingredients SET category=? WHERE id=?',(category,ingredient['id']))
         con.execute("UPDATE ingredients SET category='embalagem' WHERE name IN (SELECT package_name FROM product_stock_rules)")
+    if migrate_package_size:
+        # Recupera o tamanho do pacote mais recente salvo nas compras antigas.
+        for purchase in con.execute('SELECT items FROM purchases ORDER BY id DESC').fetchall():
+            for item in json.loads(purchase['items'] or '[]'):
+                if item.get('category') != 'embalagem' or item.get('content_per_package') is None:
+                    continue
+                unit=str(item.get('purchase_unit') or item.get('unit') or 'un').lower()
+                factor=1000 if unit in ('kg','quilo','quilograma','l','litro') else 1
+                con.execute("UPDATE ingredients SET package_size=? WHERE lower(name)=lower(?) AND package_size=0",(float(item['content_per_package'])*factor,item.get('ingredient','')))
     if not con.execute('SELECT COUNT(*) FROM ingredients').fetchone()[0]:
         rows=[('Açaí tradicional','g',18000,.0269,'insumo'),('Leite em pó','g',3000,.0315,'insumo'),('Creme de avelã','g',2000,.0589,'insumo'),("M&M's",'g',1500,.048,'insumo'),('Copo 500 ml','un',80,.75,'embalagem'),('Copo 300 ml','un',100,.58,'embalagem'),('Granola','g',2000,.0199,'insumo'),('Morango','g',4000,.018,'insumo')]
         con.executemany('INSERT INTO ingredients(name,unit,stock,cost,updated_at,category) VALUES(?,?,?,?,?,?)',[(a,b,c,d,datetime.now().isoformat(),e) for a,b,c,d,e in rows])
@@ -178,7 +189,9 @@ def ingredients():
     d=request.json or {}; category=d.get('category','insumo'); unit=d.get('unit','g')
     if category not in ('insumo','embalagem') or unit not in ('g','ml','un'): return jsonify(error='Escolha o tipo e a unidade base (g, ml ou unidade).'),400
     if (category=='embalagem' and unit!='un') or (category=='insumo' and unit=='un'): return jsonify(error='Insumos usam gramas ou mililitros; embalagens usam unidades.'),400
-    con=db(); con.execute('INSERT INTO ingredients(name,unit,stock,cost,updated_at,category) VALUES(?,?,?,?,?,?)',(d['name'],unit,d.get('stock',0),d.get('cost',0),datetime.now().isoformat(),category)); con.commit(); con.close(); return jsonify(ok=True)
+    package_size=float(d.get('package_size') or 0)
+    if package_size<0: return jsonify(error='O tamanho do pacote não pode ser negativo.'),400
+    con=db(); con.execute('INSERT INTO ingredients(name,unit,stock,cost,updated_at,category,package_size) VALUES(?,?,?,?,?,?,?)',(d['name'],unit,d.get('stock',0),d.get('cost',0),datetime.now().isoformat(),category,package_size if category=='embalagem' else 0)); con.commit(); con.close(); return jsonify(ok=True)
 
 @app.route('/api/ingredients/<int:item_id>', methods=['PUT','DELETE'])
 def ingredient_detail(item_id):
@@ -189,7 +202,10 @@ def ingredient_detail(item_id):
     category=d.get('category','insumo'); unit=d.get('unit','g')
     if category not in ('insumo','embalagem') or unit not in ('g','ml','un') or (category=='embalagem' and unit!='un') or (category=='insumo' and unit=='un'):
         con.close(); return jsonify(error='Insumos usam gramas ou mililitros; embalagens usam unidades.'),400
-    con.execute('UPDATE ingredients SET name=?,unit=?,stock=?,cost=?,category=?,updated_at=? WHERE id=?',(d['name'],unit,d['stock'],d['cost'],category,datetime.now().isoformat(),item_id))
+    package_size=float(d.get('package_size') or 0)
+    if package_size<0:
+        con.close(); return jsonify(error='O tamanho do pacote não pode ser negativo.'),400
+    con.execute('UPDATE ingredients SET name=?,unit=?,stock=?,cost=?,category=?,package_size=?,updated_at=? WHERE id=?',(d['name'],unit,d['stock'],d['cost'],category,package_size if category=='embalagem' else 0,datetime.now().isoformat(),item_id))
     con.commit(); con.close(); return jsonify(ok=True)
 
 @app.get('/api/recipes')
@@ -335,7 +351,7 @@ def normalize_purchase_items(con, items):
             con.execute('INSERT INTO ingredients(name,unit,stock,cost,updated_at,category) VALUES(?,?,?,?,?,?)',(name,base_unit,0,unit_cost,datetime.now().isoformat(),category))
         else:
             con.execute('UPDATE ingredients SET category=? WHERE id=?',(category,existing['id']))
-        prepared.append({'ingredient':name,'quantity':quantity,'unit_cost':unit_cost,'unit':base_unit,'category':category,'package_count':packages,'content_per_package':content,'purchase_unit':unit,'package_total':package_total})
+        prepared.append({'ingredient':name,'quantity':quantity,'unit_cost':unit_cost,'unit':base_unit,'category':category,'package_count':packages,'content_per_package':content,'package_size':content*factor if category=='embalagem' else 0,'purchase_unit':unit,'package_total':package_total})
         total+=package_total
     return prepared,total
 
@@ -356,7 +372,7 @@ def purchase_detail(purchase_id):
             if current and delta: con.execute('UPDATE ingredients SET stock=MAX(0,stock+?),updated_at=? WHERE name=?',(delta,datetime.now().isoformat(),name))
         if request.method=='DELETE': con.execute('DELETE FROM purchases WHERE id=?',(purchase_id,))
         else:
-            for item in prepared: con.execute('UPDATE ingredients SET cost=?,category=?,updated_at=? WHERE name=?',(item['unit_cost'],item['category'],datetime.now().isoformat(),item['ingredient']))
+            for item in prepared: con.execute('UPDATE ingredients SET cost=?,category=?,package_size=?,updated_at=? WHERE name=?',(item['unit_cost'],item['category'],item['package_size'],datetime.now().isoformat(),item['ingredient']))
             con.execute('UPDATE purchases SET supplier=?,total=?,items=? WHERE id=?',(d.get('supplier',''),total,json.dumps(prepared,ensure_ascii=False),purchase_id))
         con.commit(); return jsonify(ok=True,total=total)
     except ValueError as error:
@@ -464,7 +480,7 @@ def purchase():
     d=request.json or {}; con=db()
     try:
         con.execute('BEGIN IMMEDIATE'); prepared,total=normalize_purchase_items(con,d.get('items') or [])
-        for item in prepared: con.execute('UPDATE ingredients SET stock=stock+?,cost=?,updated_at=? WHERE name=?',(item['quantity'],item['unit_cost'],datetime.now().isoformat(),item['ingredient']))
+        for item in prepared: con.execute('UPDATE ingredients SET stock=stock+?,cost=?,category=?,package_size=?,updated_at=? WHERE name=?',(item['quantity'],item['unit_cost'],item['category'],item['package_size'],datetime.now().isoformat(),item['ingredient']))
         con.execute('INSERT INTO purchases(supplier,created_at,total,items) VALUES(?,?,?,?)',(d.get('supplier',''),datetime.now().isoformat(),total,json.dumps(prepared,ensure_ascii=False)))
         con.commit(); return jsonify(ok=True,total=total)
     except ValueError as error:

@@ -12,7 +12,12 @@ stock = async function(){
   ingredients=await api('/api/ingredients');
   const row=x=>`<tr><td><b>${x.name}</b></td><td class="${x.stock<2?'lowstock':''}">${x.stock} ${x.unit}</td><td>${money(x.cost)} / ${x.unit}</td><td>${new Date(x.updated_at).toLocaleDateString('pt-BR')}</td><td class="actions"><button onclick="editIngredient(${x.id})">Editar</button><button class="danger" onclick="deleteIngredient(${x.id},'${x.name.replace(/'/g,"\\'")}')">Excluir</button></td></tr>`;
   stockIngredients.innerHTML=ingredients.filter(x=>x.category==='insumo').map(row).join('');
-  stockPackaging.innerHTML=ingredients.filter(x=>x.category==='embalagem').map(row).join('');
+  const formatQty=value=>Number(value||0).toLocaleString('pt-BR',{maximumFractionDigits:2});
+  stockPackaging.innerHTML=ingredients.filter(x=>x.category==='embalagem').map(x=>{
+    const total=Number(x.stock||0),size=Number(x.package_size||0),closed=size>0?Math.floor(total/size+1e-9):null,loose=size>0?Math.max(0,total-closed*size):null;
+    const packageCount=closed===null?'Informe o pacote ao editar':`${formatQty(closed)} fechado(s)${loose>1e-9?` · ${formatQty(loose)} avulso(s)`:''}`;
+    return `<tr><td><b>${x.name}</b></td><td>${packageCount}</td><td class="${total<2?'lowstock':''}">${formatQty(total)} un</td><td>${money(x.cost)} / un</td><td>${new Date(x.updated_at).toLocaleDateString('pt-BR')}</td><td class="actions"><button onclick="editIngredient(${x.id})">Editar</button><button class="danger" onclick="deleteIngredient(${x.id},'${x.name.replace(/'/g,"\\'")}')">Excluir</button></td></tr>`;
+  }).join('');
   const list=document.querySelector('#ingredientNames');if(list)list.innerHTML=ingredients.map(x=>`<option value="${x.name}">`).join('');
 };
 
@@ -26,10 +31,11 @@ loadRecipes = async function(){
 
 async function editIngredient(id){
   await stock(); const x=ingredients.find(i=>i.id===id); editingIngredient=id;
-  iName.value=x.name;iCategory.value=x.category||'insumo';iUnit.value=x.unit;iStock.value=x.stock;iCost.value=x.cost; document.querySelector('#ingredientModal h2').textContent='Editar item de estoque';document.querySelector('#ingredientModal').classList.add('show');
+  iName.value=x.name;iCategory.value=x.category||'insumo';iUnit.value=x.unit;iStock.value=x.stock;iCost.value=x.cost;iPackageSize.value=x.package_size||'';togglePackageSize(); document.querySelector('#ingredientModal h2').textContent='Editar item de estoque';document.querySelector('#ingredientModal').classList.add('show');
 }
+function togglePackageSize(){document.querySelector('#packageSizeField').style.display=iCategory.value==='embalagem'?'grid':'none';}
 async function deleteIngredient(id,name){if(!confirm(`Excluir o insumo “${name}”?`))return;try{await api('/api/ingredients/'+id,{method:'DELETE'});toast('Insumo excluído.');stock();dashboard()}catch(e){toast(e.message)}}
-saveIngredient = async function(e){e.preventDefault();let d={name:iName.value,category:iCategory.value,unit:iUnit.value,stock:+iStock.value,cost:+iCost.value};await api(editingIngredient?'/api/ingredients/'+editingIngredient:'/api/ingredients',{method:editingIngredient?'PUT':'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(d)});editingIngredient=null;closeModal('ingredientModal');toast('Item salvo!');stock();dashboard()}
+saveIngredient = async function(e){e.preventDefault();let d={name:iName.value,category:iCategory.value,unit:iUnit.value,stock:+iStock.value,cost:+iCost.value,package_size:+iPackageSize.value||0};await api(editingIngredient?'/api/ingredients/'+editingIngredient:'/api/ingredients',{method:editingIngredient?'PUT':'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(d)});editingIngredient=null;closeModal('ingredientModal');toast('Item salvo!');stock();dashboard()}
 
 async function editRecipe(id){
   await stock(); await loadRecipes(); const x=recipes.find(r=>r.id===id); editingRecipe=id;
