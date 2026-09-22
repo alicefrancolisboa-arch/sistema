@@ -51,17 +51,52 @@ test('Gemini tenta outro modelo quando o primeiro falha',async()=>{
  const tried=[];const r=await recognize('image','key','gemini-3.6-flash',{gemini:async(_image,_key,model)=>{tried.push(model);if(model==='gemini-3.6-flash'){const e=Error('indisponível');e.modelStatus=503;throw e;}return {source:'gemini',warning:'',rows:[{name:'Ana',total:3,uncertain:false,note:''}]};},ocr:async()=>{throw Error('OCR não deveria ser chamado');}});
  assert.deepEqual(tried,['gemini-3.6-flash','gemini-3.8-flash']);assert.equal(r.source,'gemini');assert.equal(r.model,'gemini-3.8-flash');
 });
+test('Gemini tenta outro modelo se não encontrou riscos novos e escolhe o maior total confiável',async()=>{
+ const tried=[];const r=await recognize('image','key','gemini-3.6-flash',{previousTallies:{Ana:8},gemini:async(_image,_key,model,_fetcher,baseline)=>{tried.push(model);assert.equal(baseline.Ana,8);return {source:'gemini',warning:'',rows:[{name:'Ana',total:model==='gemini-3.6-flash'?8:11,uncertain:false,note:''}]};},ocr:async()=>{throw Error('OCR não deveria ser chamado');}});
+ assert.deepEqual(tried,['gemini-3.6-flash','gemini-3.8-flash']);assert.equal(r.rows[0].total,11);assert.equal(r.model,'gemini-3.8-flash');
+});
 test('falha de autenticação Gemini vai direto para OCR sem repetir com outras versões',async()=>{
  let calls=0;const r=await recognize('image','key','gemini-3.6-flash',{gemini:async()=>{calls++;const e=Error('chave inválida');e.modelStatus=403;throw e;},ocr:async()=>parseOcrText('Maria Silva |||')});
  assert.equal(calls,1);assert.equal(r.source,'ocr');assert.match(r.warning,/chave inválida/);
 });
-test('foto lida abaixo do acumulado nunca reduz vendas anteriores',async t=>{
+test('foto lida abaixo do acumulado fica para revisão e nunca reduz vendas anteriores',async t=>{
  const {request,store}=await start(t,{vision:async()=>({source:'gemini',model:'gemini-3.8-flash',warning:'',rows:[{name:'Maria Silva',total:2,uncertain:false,note:''}]})});
  const c=store.saveCustomer({name:'Maria Silva'}),sheet=store.createSheet({name:'Folha',purchased:'2026-08-18'});
  store.commit({sheet:sheet.id,hash:'1'.repeat(64),purchased:'2026-08-18',operation:randomUUID(),reviewed:true,rows:[{customer:c.id,total:4,previous:0,matchConfirmed:true}]});
  const result=await request('/api/photos/read',{sheet:sheet.id,image:'data:image/png;base64,AAAA'}),data=await result.json();
- assert.equal(result.status,200);assert.equal(data.rows[0].previous,4);assert.equal(data.rows[0].total,4);assert.equal(data.rows[0].uncertain,true);assert.match(data.rows[0].note,/total anterior foi mantido/);assert.equal(data.model,'gemini-3.8-flash');
+ assert.equal(result.status,200);assert.equal(data.rows[0].previous,4);assert.equal(data.rows[0].total,2);assert.equal(data.rows[0].uncertain,true);assert.match(data.rows[0].note,/abaixo dos 4 já confirmados/);assert.equal(data.model,'gemini-3.8-flash');
  assert.equal(store.snapshot().sales.reduce((sum,s)=>sum+s.qty,0),4);assert.equal(store.balances().reduce((sum,s)=>sum+s.cents,0),4000);
+});
+test('leitura vinculada a cliente existente compara pelo ID e lança somente diferença positiva',async t=>{
+ let seenBaseline;
+ const {request,store}=await start(t,{vision:async(_image,_key,_model,{previousTallies})=>{seenBaseline=previousTallies;return {source:'gemini',model:'gemini-3.8-flash',warning:'',rows:[{name:'Joao S.',total:3,uncertain:false,note:''}]};}});
+ const c=store.saveCustomer({name:'João Silva'}),sheet=store.createSheet({name:'Folha',purchased:'2026-08-18'});
+ // Establish two confirmed tally marks for this sheet.
+ store.commit({sheet:sheet.id,hash:'2'.repeat(64),purchased:'2026-08-18',operation:randomUUID(),reviewed:true,rows:[{customer:c.id,total:2,previous:0,matchConfirmed:true}]});
+ const read=await request('/api/photos/read',{sheet:sheet.id,image:'data:image/png;base64,Ag=='}),draft=await read.json();
+ assert.equal(seenBaseline['João Silva'],2);assert.equal(draft.rows[0].matchedCustomer,'');
+ // OCR spelling differs; operator explicitly selects the existing customer ID.
+ const confirmed=await request('/api/photos/confirm',{draft:draft.id,purchased:'2026-08-18',reviewed:true,operation:randomUUID(),rows:[{customer:c.id,name:'Joao S.',total:3,previous:2,matchConfirmed:true,purchased:'2026-08-18'}]});
+ assert.equal(confirmed.status,200);assert.equal((await confirmed.json()).added,1);
+ const sales=store.snapshot().sales.filter(s=>s.customer===c.id);assert.equal(sales.reduce((n,s)=>n+s.qty,0),3);assert.equal(store.totals(sheet.id).find(x=>x.customer===c.id).qty,3);
+});
+test('cliente existente com dívida recebe débito somado, não substituído',async t=>{
+ const {request,store}=await start(t,{vision:async()=>({source:'gemini',warning:'',rows:[{name:'Ana',total:3,uncertain:false,note:''}]})});
+ const c=store.saveCustomer({name:'Ana'}),sheet=store.createSheet({name:'Folha',purchased:'2026-08-18'});
+ store.commit({sheet:sheet.id,hash:'3'.repeat(64),purchased:'2026-08-18',operation:randomUUID(),reviewed:true,rows:[{customer:c.id,total:2,previous:0,matchConfirmed:true}]});
+ store.sale({customer:c.id,qty:3,purchased:'2026-08-19',operation:randomUUID()});
+ assert.equal(store.balances().filter(s=>s.customer===c.id).reduce((n,s)=>n+s.cents,0),5000);
+ const reading=await (await request('/api/photos/read',{sheet:sheet.id,image:'data:image/png;base64,Aw=='})).json();
+ const result=await request('/api/photos/confirm',{draft:reading.id,purchased:'2026-08-18',reviewed:true,operation:randomUUID(),rows:[{customer:c.id,name:'Ana',total:3,previous:2,matchConfirmed:true,purchased:'2026-08-18'}]});
+ assert.equal((await result.json()).added,1);assert.equal(store.balances().filter(s=>s.customer===c.id).reduce((n,s)=>n+s.cents,0),6000);
+});
+test('leitura igual ao acumulado não cria venda nova',async t=>{
+ const {request,store}=await start(t,{vision:async()=>({source:'gemini',warning:'',rows:[{name:'Ana',total:2,uncertain:false,note:''}]})});
+ const c=store.saveCustomer({name:'Ana'}),sheet=store.createSheet({name:'Folha',purchased:'2026-08-18'});
+ store.commit({sheet:sheet.id,hash:'4'.repeat(64),purchased:'2026-08-18',operation:randomUUID(),reviewed:true,rows:[{customer:c.id,total:2,previous:0,matchConfirmed:true}]});
+ const reading=await (await request('/api/photos/read',{sheet:sheet.id,image:'data:image/png;base64,BA=='})).json();
+ const result=await request('/api/photos/confirm',{draft:reading.id,purchased:'2026-08-18',reviewed:true,operation:randomUUID(),rows:[{customer:c.id,name:'Ana',total:2,previous:2,matchConfirmed:true,purchased:'2026-08-18'}]});
+ assert.equal((await result.json()).added,0);assert.equal(store.snapshot().sales.filter(s=>s.customer===c.id).reduce((n,s)=>n+s.qty,0),2);
 });
 test('sucesso do Gemini preserva contagem sem chamar OCR',async()=>{
  let calls=0;const r=await recognize('image','key','gemini-3.6-flash',{gemini:async()=>({source:'gemini',warning:'',rows:[{name:'Ana',total:3,uncertain:false,note:''}]}),ocr:async()=>{calls++;}});

@@ -72,15 +72,17 @@ export function createApp({dbPath=join(process.env.DATA_DIR||join(root,'data'),'
      if(reading)return send(res,429,{error:'Uma foto já está sendo lida. Aguarde a conclusão.'});
      for(const [id,d]of drafts)if(d.expires<Date.now())drafts.delete(id);
      if(drafts.size>=20)throw Error('Há muitas leituras em revisão. Conclua uma delas ou aguarde.');
+     const customers=(await store.snapshot()).customers,totals=await store.totals(sheet.id),customerById=new Map(customers.map(c=>[c.id,c.name]));
+     const previousTallies=Object.fromEntries(totals.filter(t=>t.qty>0&&customerById.has(t.customer)).map(t=>[customerById.get(t.customer),t.qty]));
      reading=true;let result;
-     try{result=await vision(b.image,apiKey,model);}finally{reading=false;}
-     const customers=(await store.snapshot()).customers,totals=await store.totals(sheet.id),id=randomUUID();
+     try{result=await vision(b.image,apiKey,model,{previousTallies});}finally{reading=false;}
+     const id=randomUUID();
      drafts.set(id,{sheet:sheet.id,hash,expires:Date.now()+3600000});
      return send(res,200,{id,source:result.source||'gemini',model:result.model||'',rawText:result.rawText||'',warning:result.warning,rows:result.rows.map(r=>{
       const match=customers.find(c=>norm(c.name)===norm(r.name));
       const previous=totals.find(t=>t.customer===match?.id)?.qty||0;
-      if(match&&Number.isSafeInteger(r.total)&&r.total<previous)return {...r,total:previous,uncertain:true,countProtected:true,originalUncertain:r.uncertain,originalNote:r.note,note:`A leitura veio abaixo das ${previous} vendas já registradas nesta folha. O total anterior foi mantido; confira e informe o total acumulado atual.`,matchedCustomer:match.id,customer:'',previous};
-      return {...r,matchedCustomer:match?.id||'',customer:'',previous};
+      const belowPrevious=match&&Number.isSafeInteger(r.total)&&r.total<previous;
+      return {...r,uncertain:r.uncertain||!!belowPrevious,note:belowPrevious?`A leitura identificou ${r.total}, abaixo dos ${previous} já confirmados. Nenhuma venda ou dívida será reduzida; confira os riscos na foto antes de confirmar.`:r.note,matchedCustomer:match?.id||'',customer:'',previous};
      })});
     }
     if(path==='/api/photos/confirm'){

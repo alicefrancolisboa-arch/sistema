@@ -116,13 +116,12 @@ export class Store {
     const before=this.one('SELECT qty FROM totals WHERE sheet=? AND customer=?',sheet,customer)?.qty||0;
     if(row.previous!==before)throw Error('Esta folha foi atualizada em outra janela. Leia a foto novamente.');
     if(row.total<before)throw Error('O total ficou menor que o já registrado. Confira a leitura ou selecione uma nova folha.');
-    const extra=row.extra??0;integer(extra,0,10000,'Risquinhos novos corrigidos');
-    const currentTotal=row.total+extra;integer(currentTotal,before,10000,'Total corrigido de risquinhos');
+    const currentTotal=row.total;integer(currentTotal,before,10000,'Total acumulado de risquinhos');
     const rowDate=row.purchased||purchased;date(rowDate);if(rowDate>today()||dueDate(rowDate,this.extras)!==page.due)throw Error('Confira a data da compra de cada cliente e o vencimento da folha.');
     const delta=currentTotal-before;added+=delta;
     if(delta)this.run('INSERT INTO sales VALUES(?,?,?,?,?,?,?)',randomUUID(),customer,delta,rowDate,page.due,sheet,new Date().toISOString());
     this.run('INSERT INTO totals VALUES(?,?,?) ON CONFLICT(sheet,customer) DO UPDATE SET qty=excluded.qty',sheet,customer,currentTotal);
-    saved.push({customer,before,total:currentTotal,added:delta,extra});
+    saved.push({customer,before,total:currentTotal,added:delta});
    }
    const id=randomUUID();
    this.run('INSERT INTO imports VALUES(?,?,?,?,?)',id,hash,sheet,new Date().toISOString(),JSON.stringify(saved));

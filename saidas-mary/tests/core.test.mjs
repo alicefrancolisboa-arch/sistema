@@ -8,7 +8,7 @@ const use=(t)=>{const s=new Store(':memory:');t.after(()=>s.close());return s;};
 const op=()=>randomUUID();
 const hash=n=>String(n).padStart(64,'0');
 function setup(t){const s=use(t),c=s.saveCustomer({name:'Maria Silva',phone:'19999999999'}),sheet=s.createSheet({name:'Folha agosto',purchased:'2026-08-18'});return {s,c,sheet};}
-function commit(s,c,sheet,total,previous,n=1,extra=0){return s.commit({sheet:sheet.id,hash:hash(n),purchased:'2026-08-18',operation:op(),reviewed:true,rows:[{customer:c.id,total,previous,extra,matchConfirmed:true}]});}
+function commit(s,c,sheet,total,previous,n=1){return s.commit({sheet:sheet.id,hash:hash(n),purchased:'2026-08-18',operation:op(),reviewed:true,rows:[{customer:c.id,total,previous,matchConfirmed:true}]});}
 test('dia 19 fecha no 20 e dia 20 muda para quinto útil',()=>{
  assert.equal(dueDate('2026-09-19'),'2026-09-20');
  assert.equal(dueDate('2026-09-20'),'2026-10-07');
@@ -65,12 +65,20 @@ test('primeira foto soma total; próxima soma somente diferença',t=>{
  const {s,c,sheet}=setup(t);assert.equal(commit(s,c,sheet,3,0).added,3);assert.equal(commit(s,c,sheet,5,3,2).added,2);
  assert.equal(s.balances().reduce((n,x)=>n+x.cents,0),5000);
 });
-test('operadora corrige riscos novos que a leitura não contou sem duplicar o saldo anterior',t=>{
+test('existente: baseline 2 e foto com 4 riscos acrescenta exatamente 2',t=>{
+ const {s,c,sheet}=setup(t);assert.equal(commit(s,c,sheet,2,0,1).added,2);assert.equal(commit(s,c,sheet,4,2,2).added,2);
+ assert.equal(s.snapshot().totals.find(x=>x.customer===c.id).qty,4);assert.equal(s.balances().reduce((n,x)=>n+x.cents,0),4000);
+});
+test('total reconhecido de 11 com baseline 8 acrescenta três sem campo de correção manual',t=>{
  const {s,c,sheet}=setup(t);assert.equal(commit(s,c,sheet,8,0,1).added,8);
- const result=commit(s,c,sheet,8,8,2,3);
+ const result=commit(s,c,sheet,11,8,2);
  assert.equal(result.added,3);assert.equal(s.snapshot().totals[0].qty,11);
  assert.equal(s.snapshot().sales.reduce((sum,sale)=>sum+sale.qty,0),11);
  assert.equal(s.balances().reduce((sum,row)=>sum+row.cents,0),11000);
+});
+test('cliente novo com 3 riscos inicia com 3 vendas e R$ 30',t=>{
+ const {s,sheet}=setup(t);const result=s.commit({sheet:sheet.id,hash:hash(1),purchased:'2026-08-18',operation:op(),reviewed:true,rows:[{name:'Cliente novo',total:3,previous:0,createNew:true,matchConfirmed:false}]});
+ const state=s.snapshot(),c=state.customers.find(x=>x.name==='Cliente novo');assert.ok(c);assert.equal(result.added,3);assert.equal(state.totals.find(x=>x.customer===c.id).qty,3);assert.equal(state.sales.filter(x=>x.customer===c.id).reduce((n,x)=>n+x.qty,0),3);assert.equal(s.balances().filter(x=>x.customer===c.id).reduce((n,x)=>n+x.cents,0),3000);
 });
 test('mesma foto e foto sem risquinhos novos nunca duplicam dívida',t=>{
  const {s,c,sheet}=setup(t);commit(s,c,sheet,3,0);assert.throws(()=>commit(s,c,sheet,3,3),/já foi/);
