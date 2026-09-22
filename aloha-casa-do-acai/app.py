@@ -199,6 +199,22 @@ def ingredients():
     else: unit_cost=float(d.get('cost',0))
     con=db(); con.execute('INSERT INTO ingredients(name,unit,stock,cost,updated_at,category,package_size) VALUES(?,?,?,?,?,?,?)',(d['name'],unit,d.get('stock',0),unit_cost,datetime.now().isoformat(),category,package_size if category=='embalagem' else 0)); con.commit(); con.close(); return jsonify(ok=True)
 
+@app.post('/api/ingredients/<int:item_id>/clear-stock')
+def clear_ingredient_stock(item_id):
+    con=db()
+    try:
+        con.execute('BEGIN IMMEDIATE')
+        item=con.execute('SELECT id FROM ingredients WHERE id=?',(item_id,)).fetchone()
+        if not item:
+            con.rollback(); return jsonify(error='Item de estoque não encontrado.'),404
+        con.execute('UPDATE ingredients SET stock=0 WHERE id=?',(item_id,))
+        con.commit()
+        return jsonify(ok=True)
+    except Exception:
+        con.rollback(); app.logger.exception('Falha ao zerar quantidade do item')
+        return jsonify(error='Não foi possível zerar a quantidade deste item.'),500
+    finally: con.close()
+
 @app.route('/api/ingredients/<int:item_id>', methods=['PUT','DELETE'])
 def ingredient_detail(item_id):
     con=db()

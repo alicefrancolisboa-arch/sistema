@@ -10,13 +10,14 @@ show = function(id){
 
 stock = async function(){
   ingredients=await api('/api/ingredients');
-  const row=x=>`<tr><td><b>${x.name}</b></td><td class="${x.stock<2?'lowstock':''}">${x.stock} ${x.unit}</td><td>${money(x.cost)} / ${x.unit}</td><td>${new Date(x.updated_at).toLocaleDateString('pt-BR')}</td><td class="actions"><button onclick="editIngredient(${x.id})">Editar</button><button class="danger" onclick="deleteIngredient(${x.id},'${x.name.replace(/'/g,"\\'")}')">Excluir</button></td></tr>`;
+  const actions=x=>`<button type="button" onclick="editIngredient(${x.id})">Editar</button><button class="danger" onclick="deleteIngredient(${x.id},'${x.name.replace(/'/g,"\\'")}')">Excluir</button><button type="button" class="danger" onclick="clearIngredientStock(${x.id},'${x.name.replace(/'/g,"\\'")}')">Zerar</button>`;
+  const row=x=>`<tr><td><b>${x.name}</b></td><td class="${x.stock<2?'lowstock':''}">${x.stock} ${x.unit}</td><td>${money(x.cost)} / ${x.unit}</td><td>${new Date(x.updated_at).toLocaleDateString('pt-BR')}</td><td class="actions">${actions(x)}</td></tr>`;
   stockIngredients.innerHTML=ingredients.filter(x=>x.category==='insumo').map(row).join('');
   const formatQty=value=>Number(value||0).toLocaleString('pt-BR',{maximumFractionDigits:2});
   stockPackaging.innerHTML=ingredients.filter(x=>x.category==='embalagem').map(x=>{
     const total=Number(x.stock||0),size=Number(x.package_size||0),closed=size>0?Math.floor(total/size+1e-9):null,loose=size>0?Math.max(0,total-closed*size):null;
     const packageCount=closed===null?'Informe o pacote ao editar':`${formatQty(closed)} fechado(s)${loose>1e-9?` · ${formatQty(loose)} avulso(s)`:''}`;
-    return `<tr><td><b>${x.name}</b></td><td>${packageCount}</td><td class="${total<2?'lowstock':''}">${formatQty(total)} un</td><td>${money(x.cost)} / un</td><td>${new Date(x.updated_at).toLocaleDateString('pt-BR')}</td><td class="actions"><button onclick="editIngredient(${x.id})">Editar</button><button class="danger" onclick="deleteIngredient(${x.id},'${x.name.replace(/'/g,"\\'")}')">Excluir</button></td></tr>`;
+    return `<tr><td><b>${x.name}</b></td><td>${packageCount}</td><td class="${total<2?'lowstock':''}">${formatQty(total)} un</td><td>${money(x.cost)} / un</td><td>${new Date(x.updated_at).toLocaleDateString('pt-BR')}</td><td class="actions">${actions(x)}</td></tr>`;
   }).join('');
   const list=document.querySelector('#ingredientNames');if(list)list.innerHTML=ingredients.map(x=>`<option value="${x.name}">`).join('');
 };
@@ -36,6 +37,7 @@ async function editIngredient(id){
 function togglePackageSize(){const packaging=iCategory.value==='embalagem';document.querySelector('#packageSizeField').style.display=packaging?'grid':'none';document.querySelector('#packageTotalField').style.display=packaging?'grid':'none';iCost.readOnly=packaging;if(packaging)recalculatePackageCost();}
 function recalculatePackageCost(){if(iCategory.value!=='embalagem')return;const size=Number(iPackageSize.value||0),total=Number(iPackageTotal.value||0),hint=document.querySelector('#packageCostHint');if(size>0&&iPackageTotal.value!==''){iCost.value=(total/size).toFixed(4);hint.textContent=`Custo calculado: ${money(total/size)} por unidade.`;}else hint.textContent='Informe o valor total pago e as unidades do pacote para ratear o custo.';}
 async function deleteIngredient(id,name){if(!confirm(`Excluir o insumo “${name}”?`))return;try{await api('/api/ingredients/'+id,{method:'DELETE'});toast('Insumo excluído.');stock();dashboard()}catch(e){toast(e.message)}}
+async function clearIngredientStock(id,name){if(!confirm(`Zerar a quantidade de “${name}”? O cadastro, o custo e o tamanho do pacote serão mantidos.`))return;try{await api(`/api/ingredients/${id}/clear-stock`,{method:'POST'});toast(`Quantidade de ${name} zerada; cadastro mantido.`);await stock();dashboard()}catch(e){toast(e.message)}}
 saveIngredient = async function(e){e.preventDefault();let d={name:iName.value,category:iCategory.value,unit:iUnit.value,stock:+iStock.value,cost:+iCost.value,package_size:+iPackageSize.value||0,package_total:iPackageTotal.value===''?null:+iPackageTotal.value};await api(editingIngredient?'/api/ingredients/'+editingIngredient:'/api/ingredients',{method:editingIngredient?'PUT':'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(d)});editingIngredient=null;closeModal('ingredientModal');toast('Item salvo!');stock();dashboard()}
 
 async function editRecipe(id){

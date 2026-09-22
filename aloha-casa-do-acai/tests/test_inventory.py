@@ -82,6 +82,23 @@ class InventoryFlowTests(unittest.TestCase):
         self.assertEqual(updated['stock'], 50)
         self.assertAlmostEqual(updated['cost'], .50)
 
+    def test_clear_one_stock_item_keeps_its_catalog_and_other_balances(self):
+        con = aloha.db()
+        con.execute("UPDATE ingredients SET stock=50,package_size=50 WHERE name='Copo 500 ml'")
+        con.execute("UPDATE ingredients SET stock=1234 WHERE name='Açaí tradicional'")
+        con.commit(); con.close()
+        before = {x['id']: x for x in self.client.get('/api/ingredients').json}
+        cup = next(x for x in before.values() if x['name'] == 'Copo 500 ml')
+        cleared = self.client.post(f"/api/ingredients/{cup['id']}/clear-stock")
+        self.assertEqual(cleared.status_code, 200, cleared.json)
+        after = {x['id']: x for x in self.client.get('/api/ingredients').json}
+        self.assertEqual(set(before), set(after))
+        self.assertEqual(after[cup['id']]['stock'], 0)
+        self.assertEqual(after[cup['id']]['package_size'], before[cup['id']]['package_size'])
+        self.assertEqual(after[cup['id']]['cost'], before[cup['id']]['cost'])
+        acai = next(x for x in after.values() if x['name'] == 'Açaí tradicional')
+        self.assertEqual(acai['stock'], 1234)
+
     def test_product_specific_topping_portion_is_deducted_in_grams(self):
         self.client.post('/api/purchases', json={'items': [
             {'ingredient': 'Leite condensado', 'category': 'insumo', 'package_count': 1, 'content_per_package': 395, 'unit': 'g', 'package_total': 7.90},
