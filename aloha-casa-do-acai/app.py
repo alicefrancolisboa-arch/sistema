@@ -190,8 +190,14 @@ def ingredients():
     if category not in ('insumo','embalagem') or unit not in ('g','ml','un'): return jsonify(error='Escolha o tipo e a unidade base (g, ml ou unidade).'),400
     if (category=='embalagem' and unit!='un') or (category=='insumo' and unit=='un'): return jsonify(error='Insumos usam gramas ou mililitros; embalagens usam unidades.'),400
     package_size=float(d.get('package_size') or 0)
-    if package_size<0: return jsonify(error='O tamanho do pacote não pode ser negativo.'),400
-    con=db(); con.execute('INSERT INTO ingredients(name,unit,stock,cost,updated_at,category,package_size) VALUES(?,?,?,?,?,?,?)',(d['name'],unit,d.get('stock',0),d.get('cost',0),datetime.now().isoformat(),category,package_size if category=='embalagem' else 0)); con.commit(); con.close(); return jsonify(ok=True)
+    package_total=d.get('package_total')
+    package_total=None if package_total in (None,'') else float(package_total)
+    if package_size<0 or (package_total is not None and package_total<0): return jsonify(error='O tamanho e o valor do pacote não podem ser negativos.'),400
+    if category=='embalagem' and package_total is not None:
+        if package_size<=0: return jsonify(error='Informe quantas unidades vêm no pacote para calcular o custo por unidade.'),400
+        unit_cost=package_total/package_size
+    else: unit_cost=float(d.get('cost',0))
+    con=db(); con.execute('INSERT INTO ingredients(name,unit,stock,cost,updated_at,category,package_size) VALUES(?,?,?,?,?,?,?)',(d['name'],unit,d.get('stock',0),unit_cost,datetime.now().isoformat(),category,package_size if category=='embalagem' else 0)); con.commit(); con.close(); return jsonify(ok=True)
 
 @app.route('/api/ingredients/<int:item_id>', methods=['PUT','DELETE'])
 def ingredient_detail(item_id):
@@ -203,9 +209,16 @@ def ingredient_detail(item_id):
     if category not in ('insumo','embalagem') or unit not in ('g','ml','un') or (category=='embalagem' and unit!='un') or (category=='insumo' and unit=='un'):
         con.close(); return jsonify(error='Insumos usam gramas ou mililitros; embalagens usam unidades.'),400
     package_size=float(d.get('package_size') or 0)
-    if package_size<0:
-        con.close(); return jsonify(error='O tamanho do pacote não pode ser negativo.'),400
-    con.execute('UPDATE ingredients SET name=?,unit=?,stock=?,cost=?,category=?,package_size=?,updated_at=? WHERE id=?',(d['name'],unit,d['stock'],d['cost'],category,package_size if category=='embalagem' else 0,datetime.now().isoformat(),item_id))
+    package_total=d.get('package_total')
+    try: package_total=None if package_total in (None,'') else float(package_total)
+    except (TypeError,ValueError): con.close(); return jsonify(error='Informe um valor válido para o pacote.'),400
+    if package_size<0 or (package_total is not None and package_total<0):
+        con.close(); return jsonify(error='O tamanho e o valor do pacote não podem ser negativos.'),400
+    if category=='embalagem' and package_total is not None:
+        if package_size<=0: con.close(); return jsonify(error='Informe quantas unidades vêm no pacote para calcular o custo por unidade.'),400
+        unit_cost=package_total/package_size
+    else: unit_cost=float(d['cost'])
+    con.execute('UPDATE ingredients SET name=?,unit=?,stock=?,cost=?,category=?,package_size=?,updated_at=? WHERE id=?',(d['name'],unit,d['stock'],unit_cost,category,package_size if category=='embalagem' else 0,datetime.now().isoformat(),item_id))
     con.commit(); con.close(); return jsonify(ok=True)
 
 @app.get('/api/recipes')

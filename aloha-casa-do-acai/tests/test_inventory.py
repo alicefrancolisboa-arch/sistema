@@ -70,6 +70,18 @@ class InventoryFlowTests(unittest.TestCase):
         self.assertEqual(item['package_size'], 50)
         self.assertEqual(item['stock'], 49)
 
+    def test_editing_package_size_and_total_recalculates_unit_cost(self):
+        item = next(x for x in self.client.get('/api/ingredients').json if x['name'] == 'Copo 500 ml')
+        result = self.client.put(f"/api/ingredients/{item['id']}", json={
+            'name': item['name'], 'category': 'embalagem', 'unit': 'un', 'stock': 50,
+            'package_size': 50, 'package_total': 25, 'cost': item['cost'],
+        })
+        self.assertEqual(result.status_code, 200, result.json)
+        updated = next(x for x in self.client.get('/api/ingredients').json if x['name'] == 'Copo 500 ml')
+        self.assertEqual(updated['package_size'], 50)
+        self.assertEqual(updated['stock'], 50)
+        self.assertAlmostEqual(updated['cost'], .50)
+
     def test_product_specific_topping_portion_is_deducted_in_grams(self):
         self.client.post('/api/purchases', json={'items': [
             {'ingredient': 'Leite condensado', 'category': 'insumo', 'package_count': 1, 'content_per_package': 395, 'unit': 'g', 'package_total': 7.90},
