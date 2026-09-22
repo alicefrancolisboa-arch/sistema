@@ -8,7 +8,7 @@ const use=(t)=>{const s=new Store(':memory:');t.after(()=>s.close());return s;};
 const op=()=>randomUUID();
 const hash=n=>String(n).padStart(64,'0');
 function setup(t){const s=use(t),c=s.saveCustomer({name:'Maria Silva',phone:'19999999999'}),sheet=s.createSheet({name:'Folha agosto',purchased:'2026-08-18'});return {s,c,sheet};}
-function commit(s,c,sheet,total,previous,n=1){return s.commit({sheet:sheet.id,hash:hash(n),purchased:'2026-08-18',operation:op(),reviewed:true,rows:[{customer:c.id,total,previous,matchConfirmed:true}]});}
+function commit(s,c,sheet,total,previous,n=1,extra=0){return s.commit({sheet:sheet.id,hash:hash(n),purchased:'2026-08-18',operation:op(),reviewed:true,rows:[{customer:c.id,total,previous,extra,matchConfirmed:true}]});}
 test('dia 19 fecha no 20 e dia 20 muda para quinto útil',()=>{
  assert.equal(dueDate('2026-09-19'),'2026-09-20');
  assert.equal(dueDate('2026-09-20'),'2026-10-07');
@@ -64,6 +64,13 @@ test('pagamento repetido não abate duas vezes',t=>{
 test('primeira foto soma total; próxima soma somente diferença',t=>{
  const {s,c,sheet}=setup(t);assert.equal(commit(s,c,sheet,3,0).added,3);assert.equal(commit(s,c,sheet,5,3,2).added,2);
  assert.equal(s.balances().reduce((n,x)=>n+x.cents,0),5000);
+});
+test('operadora corrige riscos novos que a leitura não contou sem duplicar o saldo anterior',t=>{
+ const {s,c,sheet}=setup(t);assert.equal(commit(s,c,sheet,8,0,1).added,8);
+ const result=commit(s,c,sheet,8,8,2,3);
+ assert.equal(result.added,3);assert.equal(s.snapshot().totals[0].qty,11);
+ assert.equal(s.snapshot().sales.reduce((sum,sale)=>sum+sale.qty,0),11);
+ assert.equal(s.balances().reduce((sum,row)=>sum+row.cents,0),11000);
 });
 test('mesma foto e foto sem risquinhos novos nunca duplicam dívida',t=>{
  const {s,c,sheet}=setup(t);commit(s,c,sheet,3,0);assert.throws(()=>commit(s,c,sheet,3,3),/já foi/);
