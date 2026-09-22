@@ -25,6 +25,7 @@ public class MainActivity extends Activity {
     web.setBackgroundColor(Color.rgb(255,250,242));
     WebSettings settings=web.getSettings();
     settings.setJavaScriptEnabled(true); settings.setDomStorageEnabled(true); settings.setAllowFileAccess(true);
+    settings.setCacheMode(WebSettings.LOAD_NO_CACHE);
     web.setWebViewClient(new WebViewClient());
     web.setWebChromeClient(new WebChromeClient(){
       @Override public boolean onShowFileChooser(WebView view, ValueCallback<Uri[]> callback, FileChooserParams params) {
@@ -33,8 +34,10 @@ public class MainActivity extends Activity {
         startActivityForResult(Intent.createChooser(choose,"Selecionar foto da nota"), PICK_NOTE); return true;
       }
     });
-    setContentView(web); web.loadUrl(APP_URL);
+    setContentView(web);
   }
+  /** Reabre sempre a página publicada; atualizações do servidor não exigem outro APK. */
+  @Override protected void onResume() { super.onResume(); if(web!=null) web.loadUrl(APP_URL); }
   @Override protected void onActivityResult(int request,int result,Intent data){ super.onActivityResult(request,result,data); if(request==PICK_NOTE && filePicker!=null){ Uri[] resultUris=(result==RESULT_OK && data!=null && data.getData()!=null)?new Uri[]{data.getData()}:null; filePicker.onReceiveValue(resultUris); filePicker=null; } }
   @Override public void onBackPressed(){ if(web.canGoBack()) web.goBack(); else super.onBackPressed(); }
 }
