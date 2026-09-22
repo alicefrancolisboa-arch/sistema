@@ -10,7 +10,7 @@ test('servidor: saúde pública, dados protegidos e cookie HTTPS',async t=>{
  await new Promise(r=>server.listen(0,'127.0.0.1',r));
  t.after(async()=>{await new Promise(r=>server.close(r));if(previous===undefined)delete process.env.COOKIE_SECURE;else process.env.COOKIE_SECURE=previous;});
  const url='http://127.0.0.1:'+server.address().port;
- const health=await fetch(url+'/healthz');assert.equal(health.status,200);assert.deepEqual(await health.json(),{ok:true,app:'saidas-mary'});
+ const health=await fetch(url+'/healthz');assert.equal(health.status,200);assert.deepEqual(await health.json(),{ok:true,app:'acai-da-mary'});
  assert.equal((await fetch(url+'/api/state')).status,401);
  const login=await fetch(url+'/api/login',{method:'POST',headers:{'Content-Type':'application/json','X-Acai-App':'1'},body:JSON.stringify({password:'senha-teste-servidor'})});assert.equal(login.status,200);assert.match(login.headers.get('set-cookie'),/; Secure/);
 });

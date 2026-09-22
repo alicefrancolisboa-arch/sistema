@@ -47,6 +47,22 @@ test('Gemini indisponível ou ilegível aciona OCR automaticamente',async()=>{
   assert.equal(called,1);assert.equal(r.source,'ocr');assert.equal(r.rows[0].total,null);assert.equal(r.rows[0].uncertain,true);
  }
 });
+test('Gemini tenta outro modelo quando o primeiro falha',async()=>{
+ const tried=[];const r=await recognize('image','key','gemini-3.6-flash',{gemini:async(_image,_key,model)=>{tried.push(model);if(model==='gemini-3.6-flash'){const e=Error('indisponível');e.modelStatus=503;throw e;}return {source:'gemini',warning:'',rows:[{name:'Ana',total:3,uncertain:false,note:''}]};},ocr:async()=>{throw Error('OCR não deveria ser chamado');}});
+ assert.deepEqual(tried,['gemini-3.6-flash','gemini-3.8-flash']);assert.equal(r.source,'gemini');assert.equal(r.model,'gemini-3.8-flash');
+});
+test('falha de autenticação Gemini vai direto para OCR sem repetir com outras versões',async()=>{
+ let calls=0;const r=await recognize('image','key','gemini-3.6-flash',{gemini:async()=>{calls++;const e=Error('chave inválida');e.modelStatus=403;throw e;},ocr:async()=>parseOcrText('Maria Silva |||')});
+ assert.equal(calls,1);assert.equal(r.source,'ocr');assert.match(r.warning,/chave inválida/);
+});
+test('foto lida abaixo do acumulado nunca reduz vendas anteriores',async t=>{
+ const {request,store}=await start(t,{vision:async()=>({source:'gemini',model:'gemini-3.8-flash',warning:'',rows:[{name:'Maria Silva',total:2,uncertain:false,note:''}]})});
+ const c=store.saveCustomer({name:'Maria Silva'}),sheet=store.createSheet({name:'Folha',purchased:'2026-08-18'});
+ store.commit({sheet:sheet.id,hash:'1'.repeat(64),purchased:'2026-08-18',operation:randomUUID(),reviewed:true,rows:[{customer:c.id,total:4,previous:0,matchConfirmed:true}]});
+ const result=await request('/api/photos/read',{sheet:sheet.id,image:'data:image/png;base64,AAAA'}),data=await result.json();
+ assert.equal(result.status,200);assert.equal(data.rows[0].previous,4);assert.equal(data.rows[0].total,4);assert.equal(data.rows[0].uncertain,true);assert.match(data.rows[0].note,/total anterior foi mantido/);assert.equal(data.model,'gemini-3.8-flash');
+ assert.equal(store.snapshot().sales.reduce((sum,s)=>sum+s.qty,0),4);assert.equal(store.balances().reduce((sum,s)=>sum+s.cents,0),4000);
+});
 test('sucesso do Gemini preserva contagem sem chamar OCR',async()=>{
  let calls=0;const r=await recognize('image','key','gemini-3.6-flash',{gemini:async()=>({source:'gemini',warning:'',rows:[{name:'Ana',total:3,uncertain:false,note:''}]}),ocr:async()=>{calls++;}});
  assert.equal(calls,0);assert.equal(r.rows[0].total,3);

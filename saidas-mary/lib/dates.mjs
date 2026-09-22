@@ -47,4 +47,4 @@ export function reminders(value,extra=[]) {
 }
 export const money = cents => new Intl.NumberFormat('pt-BR',{style:'currency',currency:'BRL'}).format(cents/100);
 export const prettyDate = s => date(s).toLocaleDateString('pt-BR',{timeZone:'UTC'});
-export function message(name,cents,due) { return 'Olá, '+name+'! Seu saldo de açaí para pagamento até '+prettyDate(due)+' é de '+money(cents)+'. Obrigado! — Saídas Mary'; }
+export function message(name,cents,due) { return 'Olá, '+name+'! Seu saldo de açaí para pagamento até '+prettyDate(due)+' é de '+money(cents)+'. Obrigado! — Açaí da Mary'; }

@@ -11,7 +11,7 @@ export function validateReading(result){
  }
  return result;
 }
-export async function recognizeGemini(image,key,model='gemini-3.6-flash',fetcher=fetch) {
+export async function recognizeGemini(image,key,model='gemini-3.8-flash',fetcher=fetch) {
  if(!key)throw Error('Gemini ainda não configurado.');
  if(!/^gemini-[a-zA-Z0-9._-]+$/.test(model))throw Error('Modelo Gemini inválido.');
  const match=/^data:(image\/(?:jpeg|png|webp));base64,([A-Za-z0-9+/=]+)$/.exec(image);
@@ -19,17 +19,18 @@ export async function recognizeGemini(image,key,model='gemini-3.6-flash',fetcher
  let response;
  try{
   const send=()=>fetcher('https://generativelanguage.googleapis.com/v1beta/models/'+model+':generateContent',{
-   method:'POST',signal:AbortSignal.timeout(45000),headers:{'x-goog-api-key':key,'Content-Type':'application/json'},
+   method:'POST',signal:AbortSignal.timeout(30000),headers:{'x-goog-api-key':key,'Content-Type':'application/json'},
    body:JSON.stringify({systemInstruction:{parts:[{text:instructions}]},contents:[{role:'user',parts:[{inlineData:{mimeType:match[1],data:match[2]}},{text:'Transcreva os nomes e o total de risquinhos desta folha.'}]}],generationConfig:{responseMimeType:'application/json',responseJsonSchema:schema,temperature:0,maxOutputTokens:8192}})
   });
   response=await send();
   if([500,502,503,504].includes(response.status)){await new Promise(resolve=>setTimeout(resolve,1200));response=await send();}
- }catch(e){throw Error(e.name==='TimeoutError'?'O Gemini demorou para responder.':'Não foi possível conectar ao Gemini.');}
+ }catch(e){const failure=Error(e.name==='TimeoutError'?'O Gemini demorou para responder.':'Não foi possível conectar ao Gemini.');failure.modelStatus=0;throw failure;}
  if(!response.ok){
-  if([400,401,403].includes(response.status))throw Error('O Gemini não aceitou a chave ou a configuração da solicitação.');
-  if(response.status===429)throw Error('O Gemini atingiu o limite de uso ou de crédito.');
-  if(response.status===404)throw Error('O modelo Gemini configurado não está disponível.');
-  throw Error('O Gemini está indisponível no momento.');
+  let message='O Gemini está indisponível no momento.';
+  if([400,401,403].includes(response.status))message='O Gemini não aceitou a chave ou a configuração da solicitação.';
+  if(response.status===429)message='O Gemini atingiu o limite de uso ou de crédito.';
+  if(response.status===404)message='O modelo Gemini configurado não está disponível.';
+  const failure=Error(message);failure.modelStatus=response.status;throw failure;
  }
  const data=await response.json(),candidate=data.candidates?.[0];
  if(!candidate || candidate.finishReason!=='STOP')throw Error('O Gemini não concluiu a leitura.');
@@ -65,11 +66,14 @@ export async function recognizeOcr(image){
  catch{throw Error('O OCR não conseguiu ler esta foto. Tente uma foto mais nítida.');}
  finally{clearTimeout(timer);if(worker)await worker.terminate().catch(()=>{});}
 }
-export async function recognize(image,key,model='gemini-3.6-flash',{gemini=recognizeGemini,ocr=recognizeOcr}={}){
+export async function recognize(image,key,model='gemini-3.8-flash',{gemini=recognizeGemini,ocr=recognizeOcr}={}){
  let reason='Gemini ainda não configurado.';
  if(key){
-  try{const result=await gemini(image,key,model);validateReading(result);if(result.rows.length)return result;reason='O Gemini não encontrou uma folha legível.';}
-  catch(e){reason=e.message;}
+  const candidates=[...new Set([model,'gemini-3.8-flash','gemini-3.7-flash','gemini-3.6-flash','gemini-3.5-flash'])].slice(0,3);
+  for(const candidate of candidates){
+   try{const result=await gemini(image,key,candidate);validateReading(result);if(result.rows.length)return {...result,model:candidate};reason='O Gemini não encontrou nomes legíveis.';}
+   catch(e){reason=e.message||'Falha na leitura Gemini.';if([401,403].includes(e.modelStatus))break;}
+  }
  }
  const result=await ocr(image);validateReading(result);
  return {...result,warning:reason+' '+result.warning};

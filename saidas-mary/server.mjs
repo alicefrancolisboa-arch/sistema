@@ -8,7 +8,7 @@ import { CloudStore } from './lib/cloud-store.mjs';
 import { Store,norm } from './lib/store.mjs';
 import { recognize } from './lib/vision.mjs';
 const root=dirname(fileURLToPath(import.meta.url));
-export function createApp({dbPath=join(process.env.DATA_DIR||join(root,'data'),'acai.sqlite'),apiKey=process.env.GEMINI_API_KEY||'',password=process.env.APP_PASSWORD||'',username=process.env.APP_USER||'CASADOACAI',model=process.env.GEMINI_MODEL||'gemini-3.6-flash',vision=recognize,cloud=null}={}){
+export function createApp({dbPath=join(process.env.DATA_DIR||join(root,'data'),'acai.sqlite'),apiKey=process.env.GEMINI_API_KEY||'',password=process.env.APP_PASSWORD||'',username=process.env.APP_USER||'CASADOACAI',model=process.env.GEMINI_MODEL||'gemini-3.8-flash',vision=recognize,cloud=null}={}){
  if(!cloud&&dbPath!==':memory:')mkdirSync(dirname(dbPath),{recursive:true});
  const store=cloud||new Store(dbPath),sessions=new Map(),drafts=new Map(),attempts=new Map();
  let reading=false;
@@ -24,7 +24,7 @@ export function createApp({dbPath=join(process.env.DATA_DIR||join(root,'data'),'
   res.setHeader('X-Content-Type-Options','nosniff');res.setHeader('Referrer-Policy','no-referrer');
   res.setHeader('Content-Security-Policy',"default-src 'self'; img-src 'self' data: blob:; style-src 'self'; script-src 'self'; connect-src 'self'; manifest-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'");
   try{
-   if(req.url==='/healthz'&&['GET','HEAD'].includes(req.method))return send(res,200,{ok:true,app:'saidas-mary'});
+   if(req.url==='/healthz'&&['GET','HEAD'].includes(req.method))return send(res,200,{ok:true,app:'acai-da-mary'});
    const host=req.headers.host||'',local=/^(localhost|127\.0\.0\.1|\[::1\])(:\d+)?$/.test(host);
    if(!password&&!local)return send(res,403,{error:'Defina uma senha antes de permitir acesso pela rede.'});
    if(req.headers.origin){let origin;try{origin=new URL(req.headers.origin);}catch{return send(res,403,{error:'Origem inválida.'});}if(origin.host!==host)return send(res,403,{error:'Acesso de outra origem não permitido.'});}
@@ -76,9 +76,11 @@ export function createApp({dbPath=join(process.env.DATA_DIR||join(root,'data'),'
      try{result=await vision(b.image,apiKey,model);}finally{reading=false;}
      const customers=(await store.snapshot()).customers,totals=await store.totals(sheet.id),id=randomUUID();
      drafts.set(id,{sheet:sheet.id,hash,expires:Date.now()+3600000});
-     return send(res,200,{id,source:result.source||'gemini',rawText:result.rawText||'',warning:result.warning,rows:result.rows.map(r=>{
+     return send(res,200,{id,source:result.source||'gemini',model:result.model||'',rawText:result.rawText||'',warning:result.warning,rows:result.rows.map(r=>{
       const match=customers.find(c=>norm(c.name)===norm(r.name));
-      return {...r,matchedCustomer:match?.id||'',customer:'',previous:totals.find(t=>t.customer===match?.id)?.qty||0};
+      const previous=totals.find(t=>t.customer===match?.id)?.qty||0;
+      if(match&&Number.isSafeInteger(r.total)&&r.total<previous)return {...r,total:previous,uncertain:true,countProtected:true,originalUncertain:r.uncertain,originalNote:r.note,note:`A leitura veio abaixo das ${previous} vendas já registradas nesta folha. O total anterior foi mantido; confira e informe o total acumulado atual.`,matchedCustomer:match.id,customer:'',previous};
+      return {...r,matchedCustomer:match?.id||'',customer:'',previous};
      })});
     }
     if(path==='/api/photos/confirm'){
@@ -89,7 +91,7 @@ export function createApp({dbPath=join(process.env.DATA_DIR||join(root,'data'),'
     return send(res,404,{error:'Página não encontrada.'});
    }
    if(path==='/baixar-apk' && req.method==='GET'){
-    res.writeHead(200,{'Content-Type':'application/vnd.android.package-archive','Content-Disposition':'attachment; filename="Saidas-Mary.apk"','Cache-Control':'no-cache'});
+    res.writeHead(200,{'Content-Type':'application/vnd.android.package-archive','Content-Disposition':'attachment; filename="Acai-da-Mary.apk"','Cache-Control':'no-cache'});
     return res.end(readFileSync(join(root,'dist','Saidas-Mary.apk')));
    }
    const routes={'/':'public/index.html','/app.js':'public/app.js','/styles.css':'public/styles.css','/dates.mjs':'lib/dates.mjs','/manifest.webmanifest':'public/manifest.webmanifest','/icon.svg':'public/icon.svg','/sw.js':'public/sw.js'};
@@ -109,5 +111,5 @@ if(process.argv[1] && fileURLToPath(import.meta.url)===process.argv[1]){
  if(useCloud&&(!process.env.TURSO_DATABASE_URL||!process.env.TURSO_AUTH_TOKEN))throw Error('Configure TURSO_DATABASE_URL e TURSO_AUTH_TOKEN no Render.');
  const cloud=useCloud?new CloudStore({url:process.env.TURSO_DATABASE_URL,token:process.env.TURSO_AUTH_TOKEN}):null;
  if(cloud)await cloud.ready();
- const {server}=createApp({cloud});server.listen(port,host,()=>console.log('Saídas Mary disponível em http://'+host+':'+port+' — leitura de fotos: '+(process.env.GEMINI_API_KEY?'Gemini configurado + OCR local':'OCR local; Gemini ainda não configurado')));
+ const {server}=createApp({cloud});server.listen(port,host,()=>console.log('Açaí da Mary disponível em http://'+host+':'+port+' — leitura de fotos: '+(process.env.GEMINI_API_KEY?'Gemini com modelos alternativos + OCR local':'OCR local; Gemini ainda não configurado')));
 }

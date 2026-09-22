@@ -1,4 +1,4 @@
-# Saídas Mary — configuração gratuita
+# Açaí da Mary — configuração gratuita
 
 Aplicativo separado do Aloha, com clientes, vendas de R$ 10, leitura de folhas pelo Gemini e OCR de reserva, pagamentos e cobranças. Mantém o layout rosa.
 
