@@ -33,7 +33,15 @@ def init_db():
     CREATE TABLE IF NOT EXISTS recipes (id INTEGER PRIMARY KEY, name TEXT UNIQUE NOT NULL, size TEXT, price REAL, margin REAL DEFAULT 100, items TEXT NOT NULL, active INTEGER DEFAULT 1);
     CREATE TABLE IF NOT EXISTS sales (id INTEGER PRIMARY KEY, recipe_id INTEGER, quantity INTEGER, total REAL, created_at TEXT);
     CREATE TABLE IF NOT EXISTS shopping_list (id INTEGER PRIMARY KEY, name TEXT NOT NULL, unit TEXT NOT NULL DEFAULT 'un', quantity REAL NOT NULL DEFAULT 1, purchased INTEGER NOT NULL DEFAULT 0, ingredient_id INTEGER, updated_at TEXT);
+    CREATE TABLE IF NOT EXISTS product_stock_rules (code TEXT PRIMARY KEY, product_name TEXT NOT NULL, acai_grams INTEGER NOT NULL, max_complements INTEGER NOT NULL, package_name TEXT NOT NULL, active INTEGER NOT NULL DEFAULT 1);
+    CREATE TABLE IF NOT EXISTS complement_stock_rules (ingredient_id INTEGER PRIMARY KEY, grams_per_portion INTEGER NOT NULL, active INTEGER NOT NULL DEFAULT 1, FOREIGN KEY(ingredient_id) REFERENCES ingredients(id));
+    CREATE TABLE IF NOT EXISTS stock_movements (id INTEGER PRIMARY KEY, sale_id INTEGER, item_index INTEGER, ingredient_id INTEGER NOT NULL, quantity REAL NOT NULL, unit TEXT NOT NULL, movement_type TEXT NOT NULL, created_at TEXT NOT NULL, recipe_snapshot TEXT NOT NULL, FOREIGN KEY(ingredient_id) REFERENCES ingredients(id));
+    CREATE TABLE IF NOT EXISTS sale_requests (request_id TEXT PRIMARY KEY, created_at TEXT NOT NULL);
     ''')
+    # Upgrade legacy databases without discarding prior sales.
+    sale_columns={r['name'] for r in con.execute('PRAGMA table_info(sales)')}
+    if 'stock_snapshot' not in sale_columns: con.execute("ALTER TABLE sales ADD COLUMN stock_snapshot TEXT NOT NULL DEFAULT '[]'")
+    if 'complements' not in sale_columns: con.execute("ALTER TABLE sales ADD COLUMN complements TEXT NOT NULL DEFAULT '[]'")
     if not con.execute('SELECT COUNT(*) FROM ingredients').fetchone()[0]:
         rows=[('Açaí tradicional','kg',18,26.90),('Leite em pó','kg',3,31.50),('Creme de avelã','kg',2,58.90),("M&M's",'kg',1.5,48.00),('Copo 500 ml','un',80,.75),('Copo 300 ml','un',100,.58),('Granola','kg',2,19.90),('Morango','kg',4,18.00)]
         con.executemany('INSERT INTO ingredients(name,unit,stock,cost,updated_at) VALUES(?,?,?,?,?)',[(a,b,c,d,datetime.now().isoformat()) for a,b,c,d in rows])
@@ -43,7 +51,7 @@ def init_db():
     # Cardápio oficial Aloha (mantém preços e tamanhos alinhados ao menu da loja).
     con.execute("UPDATE recipes SET name='Copo 500 ml', size='500 ml', price=27 WHERE name='Açaí 500 ml'")
     con.execute("UPDATE recipes SET name='Copo 300 ml', size='300 ml', price=16 WHERE name='Açaí 300 ml'")
-    for name, unit, stock, cost in [('Copo 150 ml','un',80,.42),('Copo 200 ml','un',80,.48),('Copo 500 ml','un',80,.75)]:
+    for name, unit, stock, cost in [('Copo 150 ml','un',80,.42),('Copo 200 ml','un',80,.48),('Copo 300 ml','un',100,.58),('Copo 500 ml','un',80,.75),('Bowl 500 ml','un',0,0)]:
         con.execute('INSERT OR IGNORE INTO ingredients(name,unit,stock,cost,updated_at) VALUES(?,?,?,?,?)',(name,unit,stock,cost,datetime.now().isoformat()))
     menu_recipes = [
         ('Copo 150 ml','150 ml',10, [{'ingredient':'Açaí tradicional','qty':.13},{'ingredient':'Copo 150 ml','qty':1}]),
@@ -53,6 +61,16 @@ def init_db():
     ]
     for name, size, price, items in menu_recipes:
         con.execute('INSERT OR IGNORE INTO recipes(name,size,price,margin,items) VALUES(?,?,?,?,?)',(name,size,price,120,json.dumps(items)))
+    product_rules=[('COPO_150','Copo 150 ml',100,2,'Copo 150 ml'),('COPO_200','Copo 200 ml',140,2,'Copo 200 ml'),('COPO_300','Copo 300 ml',200,3,'Copo 300 ml'),('COPO_500','Copo 500 ml',330,4,'Copo 500 ml'),('BOWL_500','Bowl 500 ml',330,4,'Bowl 500 ml'),('BARCA_600','Barca 600 ml',380,6,'Barca 600 ml')]
+    con.executemany('INSERT OR IGNORE INTO product_stock_rules(code,product_name,acai_grams,max_complements,package_name) VALUES(?,?,?,?,?)',product_rules)
+    toppings=[('Leite condensado',20),('Creme de avelã',15),('Doce de leite',20),('Calda de morango',20),('Creme de leite Ninho',20),('Creme de chocolate branco',20),('Brigadeiro de maracujá',20),('Uva',25),('Morango',25),('Kiwi',25),('Banana',30),('Granola',15),('Leite em pó',15),('Sucrilhos',10),('Bis',15),('Confete',10),('Granulado',10),('Paçoca',15),('Amendoim',15)]
+    for name, grams in toppings:
+        row=con.execute('SELECT id FROM ingredients WHERE lower(name)=lower(?)',(name,)).fetchone()
+        if not row:
+            cur=con.execute('INSERT INTO ingredients(name,unit,stock,cost,updated_at) VALUES(?,?,?,?,?)',(name,'kg',0,0,datetime.now().isoformat())); ingredient_id=cur.lastrowid
+        else: ingredient_id=row['id']
+        con.execute('INSERT OR IGNORE INTO complement_stock_rules(ingredient_id,grams_per_portion) VALUES(?,?)',(ingredient_id,grams))
+    con.execute("INSERT OR IGNORE INTO ingredients(name,unit,stock,cost,updated_at) VALUES('Barca 600 ml','un',0,0,?)",(datetime.now().isoformat(),))
     con.commit(); con.close()
 
 def rows(q, args=()):
@@ -136,6 +154,70 @@ def recipe_detail(recipe_id):
     con.execute('UPDATE recipes SET name=?,size=?,price=?,margin=?,items=? WHERE id=?',(d['name'],d.get('size',''),d.get('price',0),d.get('margin',100),json.dumps(d['items']),recipe_id))
     con.commit(); con.close(); return jsonify(ok=True)
 
+@app.get('/api/stock-rules')
+def stock_rules():
+    con=db()
+    products=[dict(x) for x in con.execute('SELECT * FROM product_stock_rules ORDER BY code')]
+    toppings=[dict(x) for x in con.execute('SELECT r.ingredient_id,r.grams_per_portion,r.active,i.name,i.unit FROM complement_stock_rules r JOIN ingredients i ON i.id=r.ingredient_id ORDER BY i.name')]
+    con.close(); return jsonify(products=products,complements=toppings)
+
+@app.put('/api/stock-rules/<code>')
+def update_stock_rule(code):
+    d=request.json or {}; con=db()
+    if 'acai_grams' in d:
+        if not 0<=int(d['acai_grams'])<=5000: con.close(); return jsonify(error='Informe o peso do açaí em gramas.'),400
+        if not 0<=int(d.get('max_complements',0))<=20: con.close(); return jsonify(error='Limite de complementos inválido.'),400
+        package=(d.get('package_name') or '').strip()
+        if package and not con.execute('SELECT 1 FROM ingredients WHERE lower(name)=lower(?)',(package,)).fetchone(): con.close(); return jsonify(error='Cadastre a embalagem antes de vinculá-la.'),400
+        if package:
+            cur=con.execute('UPDATE product_stock_rules SET acai_grams=?,max_complements=?,package_name=?,active=? WHERE code=?',(int(d['acai_grams']),int(d['max_complements']),package,int(bool(d.get('active',True))),code))
+        else:
+            cur=con.execute('UPDATE product_stock_rules SET acai_grams=?,max_complements=?,active=? WHERE code=?',(int(d['acai_grams']),int(d['max_complements']),int(bool(d.get('active',True))),code))
+    else:
+        try: grams=int(d['grams_per_portion']); ingredient_id=int(d['ingredient_id'])
+        except (KeyError,TypeError,ValueError): con.close(); return jsonify(error='Informe o complemento e a porção em gramas.'),400
+        if not 0<=grams<=2000: con.close(); return jsonify(error='Porção inválida.'),400
+        cur=con.execute('UPDATE complement_stock_rules SET grams_per_portion=?,active=? WHERE ingredient_id=?',(grams,int(bool(d.get('active',True))),ingredient_id))
+    con.commit(); con.close()
+    if not cur.rowcount: return jsonify(error='Regra não encontrada.'),404
+    return jsonify(ok=True)
+
+@app.get('/api/stock-movements')
+def stock_movements(): return jsonify(rows('SELECT m.*,i.name AS ingredient FROM stock_movements m JOIN ingredients i ON i.id=m.ingredient_id ORDER BY m.id DESC LIMIT 500'))
+
+def product_rule(con, recipe):
+    name=(recipe['name'] or '').strip().casefold()
+    match=con.execute('SELECT * FROM product_stock_rules WHERE lower(product_name)=lower(?)',(recipe['name'],)).fetchone()
+    if match: return match
+    # Keep standard rules applicable if an operator has a slightly different menu label.
+    size=(recipe['size'] or '').lower();
+    if 'barca' in name or 'barca' in size: code='BARCA_600'
+    elif 'bowl' in name: code='BOWL_500'
+    elif '150' in name or '150' in size: code='COPO_150'
+    elif '200' in name or '200' in size: code='COPO_200'
+    elif '300' in name or '300' in size: code='COPO_300'
+    elif '500' in name or '500' in size: code='COPO_500'
+    else: return None
+    return con.execute('SELECT * FROM product_stock_rules WHERE code=?',(code,)).fetchone()
+
+def consume_stock(con, ingredient_id, delta, base_quantity, unit, sale_id, item_index, movement_type, snapshot):
+    ingredient=con.execute('SELECT id,name,unit,stock FROM ingredients WHERE id=?',(ingredient_id,)).fetchone()
+    if not ingredient: raise ValueError('Um ingrediente da ficha técnica não está cadastrado.')
+    new_stock=float(ingredient['stock'])-delta
+    if new_stock < -1e-8: raise ValueError(f"Estoque insuficiente: {ingredient['name']} (disponível {ingredient['stock']:g} {ingredient['unit']}).")
+    con.execute('UPDATE ingredients SET stock=?,updated_at=? WHERE id=?',(max(0,new_stock),datetime.now().isoformat(),ingredient_id))
+    con.execute('INSERT INTO stock_movements(sale_id,item_index,ingredient_id,quantity,unit,movement_type,created_at,recipe_snapshot) VALUES(?,?,?,?,?,?,?,?)',(sale_id,item_index,ingredient_id,base_quantity,unit,movement_type,datetime.now().isoformat(),json.dumps(snapshot,ensure_ascii=False)))
+
+def reverse_sale_stock(con, sale_row, movement_type='ESTORNO_VENDA'):
+    snapshot=json.loads(sale_row['stock_snapshot'] or '[]'); qty=int(sale_row['quantity'])
+    recipe_snapshot=json.loads(sale_row['complements'] or '{}')
+    for entry in snapshot:
+        ing=con.execute('SELECT id,stock FROM ingredients WHERE id=?',(entry['ingredient_id'],)).fetchone()
+        if not ing: continue
+        delta=float(entry['stock_delta'])*qty
+        con.execute('UPDATE ingredients SET stock=stock+?,updated_at=? WHERE id=?',(delta,datetime.now().isoformat(),entry['ingredient_id']))
+        con.execute('INSERT INTO stock_movements(sale_id,item_index,ingredient_id,quantity,unit,movement_type,created_at,recipe_snapshot) VALUES(?,?,?,?,?,?,?,?)',(sale_row['id'],0,entry['ingredient_id'],float(entry['base_quantity'])*qty,entry['unit'],movement_type,datetime.now().isoformat(),json.dumps(recipe_snapshot,ensure_ascii=False)))
+
 @app.get('/api/purchases')
 def purchases_list(): return jsonify(rows('SELECT * FROM purchases ORDER BY id DESC'))
 
@@ -156,31 +238,97 @@ def purchase_detail(purchase_id):
 
 @app.post('/api/sales')
 def sale():
-    d=request.json; qty=max(1,int(d.get('quantity',1))); con=db(); recipe=con.execute('SELECT * FROM recipes WHERE id=?',(d['recipe_id'],)).fetchone()
-    if not recipe: return jsonify(error='Produto não encontrado'),404
-    for item in json.loads(recipe['items']):
-        cur=con.execute('UPDATE ingredients SET stock=stock-? WHERE name=? AND stock>=?',(float(item['qty'])*qty,item['ingredient'],float(item['qty'])*qty))
-        if not cur.rowcount: con.rollback(); con.close(); return jsonify(error=f"Estoque insuficiente: {item['ingredient']}"),400
-    total=float(recipe['price'])*qty; con.execute('INSERT INTO sales(recipe_id,quantity,total,created_at) VALUES(?,?,?,?)',(recipe['id'],qty,total,datetime.now().isoformat())); con.commit(); con.close(); return jsonify(ok=True,total=total)
+    d=request.json or {}; con=db(); request_id=str(d.get('request_id') or '')
+    try:
+        if not request_id: return jsonify(error='Identificador de venda ausente. Atualize o aplicativo e tente novamente.'),400
+        con.execute('BEGIN IMMEDIATE')
+        if con.execute('SELECT 1 FROM sale_requests WHERE request_id=?',(request_id,)).fetchone(): con.rollback(); return jsonify(ok=True,duplicate=True)
+        con.execute('INSERT INTO sale_requests(request_id,created_at) VALUES(?,?)',(request_id,datetime.now().isoformat()))
+        items=d.get('items') or [{'recipe_id':d.get('recipe_id'),'quantity':d.get('quantity',1),'complements':d.get('complements',[])}]
+        total=0.0; made=[]
+        for index, item in enumerate(items):
+            recipe=con.execute('SELECT * FROM recipes WHERE id=? AND active=1',(item.get('recipe_id'),)).fetchone()
+            if not recipe: raise ValueError('Um produto selecionado não foi encontrado.')
+            qty=int(item.get('quantity',1))
+            if qty<1 or qty>500: raise ValueError('Quantidade de unidades inválida.')
+            rule=product_rule(con,recipe); snapshot=[]; toppings=[]; recipe_snapshot={'product':recipe['name'],'product_id':recipe['id'],'quantity':qty,'recipe_items':json.loads(recipe['items'])}
+            if rule:
+                if not rule['active']: raise ValueError(f"A regra de estoque de {recipe['name']} está desativada.")
+                topping_ids=item.get('complements') or []
+                topping_ids=[int(x.get('ingredient_id')) if isinstance(x,dict) else int(x) for x in topping_ids]
+                if len(topping_ids)>int(rule['max_complements']): raise ValueError(f"{recipe['name']} permite até {rule['max_complements']} complementos.")
+                acai=con.execute("SELECT id,name,unit FROM ingredients WHERE lower(name) LIKE '%açaí%' OR lower(name) LIKE '%acai%' ORDER BY id LIMIT 1").fetchone()
+                if not acai: raise ValueError('Cadastre o insumo Açaí tradicional para controlar as baixas.')
+                acai_delta=float(rule['acai_grams'])/1000 if acai['unit'].lower() in ('kg','quilo','quilograma') else float(rule['acai_grams'])
+                acai_unit='g' if acai['unit'].lower() in ('kg','quilo','quilograma') else acai['unit']
+                snapshot.append({'ingredient_id':acai['id'],'name':acai['name'],'stock_delta':acai_delta,'base_quantity':int(rule['acai_grams']),'unit':acai_unit})
+                selected=[]
+                for ingredient_id in topping_ids:
+                    topping=con.execute('SELECT r.grams_per_portion,r.active,i.id,i.name,i.unit FROM complement_stock_rules r JOIN ingredients i ON i.id=r.ingredient_id WHERE i.id=?',(ingredient_id,)).fetchone()
+                    if not topping or not topping['active']: raise ValueError('Um complemento escolhido está inativo ou não foi encontrado.')
+                    delta=float(topping['grams_per_portion'])/1000 if topping['unit'].lower() in ('kg','quilo','quilograma') else float(topping['grams_per_portion'])
+                    topping_unit='g' if topping['unit'].lower() in ('kg','quilo','quilograma') else topping['unit']
+                    snapshot.append({'ingredient_id':topping['id'],'name':topping['name'],'stock_delta':delta,'base_quantity':int(topping['grams_per_portion']),'unit':topping_unit})
+                    selected.append({'ingredient_id':topping['id'],'name':topping['name'],'grams':int(topping['grams_per_portion'])})
+                package=con.execute('SELECT id,name,unit FROM ingredients WHERE lower(name)=lower(?)',(rule['package_name'],)).fetchone()
+                if not package: raise ValueError(f"Cadastre a embalagem {rule['package_name']} para controlar a baixa.")
+                snapshot.append({'ingredient_id':package['id'],'name':package['name'],'stock_delta':1.0,'base_quantity':1,'unit':'un'})
+                recipe_snapshot={'code':rule['code'],'product':recipe['name'],'acai_grams':int(rule['acai_grams']),'max_complements':int(rule['max_complements']),'package':package['name'],'complements':selected}
+            else:
+                # Products outside the standardized menu retain their saved recipe as their stock specification.
+                for part in json.loads(recipe['items']):
+                    inv=con.execute('SELECT id,name,unit FROM ingredients WHERE name=?',(part['ingredient'],)).fetchone()
+                    if not inv: raise ValueError(f"Insumo não cadastrado: {part['ingredient']}")
+                    delta=float(part['qty']); base=delta; unit=inv['unit']
+                    snapshot.append({'ingredient_id':inv['id'],'name':inv['name'],'stock_delta':delta,'base_quantity':base,'unit':unit})
+            complement_json=json.dumps(recipe_snapshot,ensure_ascii=False); snapshot_json=json.dumps(snapshot,ensure_ascii=False)
+            line_total=float(recipe['price'])*qty; total+=line_total
+            cur=con.execute('INSERT INTO sales(recipe_id,quantity,total,created_at,stock_snapshot,complements) VALUES(?,?,?,?,?,?)',(recipe['id'],qty,line_total,datetime.now().isoformat(),snapshot_json,complement_json)); sale_id=cur.lastrowid
+            for portion in range(qty):
+                for entry in snapshot:
+                    consume_stock(con,entry['ingredient_id'],entry['stock_delta'],entry['base_quantity'],entry['unit'],sale_id,index,'SAIDA_VENDA',recipe_snapshot)
+            made.append(sale_id)
+        con.commit(); return jsonify(ok=True,total=total,sales=made)
+    except ValueError as error:
+        con.rollback(); return jsonify(error=str(error)),400
+    except Exception:
+        con.rollback(); app.logger.exception('Falha ao confirmar venda e dar baixa no estoque'); return jsonify(error='Não foi possível finalizar a venda. O estoque não foi alterado.'),500
+    finally: con.close()
 
 @app.get('/api/sales')
 def sales_list(): return jsonify(rows('SELECT s.*, r.name FROM sales s LEFT JOIN recipes r ON r.id=s.recipe_id ORDER BY s.id DESC LIMIT 100'))
 
 @app.route('/api/sales/<int:sale_id>', methods=['PUT','DELETE'])
 def sale_detail(sale_id):
-    con=db(); sale=con.execute('SELECT * FROM sales WHERE id=?',(sale_id,)).fetchone()
-    if not sale: con.close(); return jsonify(error='Venda não encontrada'),404
-    recipe=con.execute('SELECT * FROM recipes WHERE id=?',(sale['recipe_id'],)).fetchone()
-    # Devolve a baixa original; se for edição, aplica novamente a nova quantidade.
-    for item in json.loads(recipe['items']): con.execute('UPDATE ingredients SET stock=stock+? WHERE name=?',(float(item['qty'])*sale['quantity'],item['ingredient']))
-    if request.method == 'DELETE': con.execute('DELETE FROM sales WHERE id=?',(sale_id,))
-    else:
-        new_qty=max(1,int(request.json['quantity']))
-        for item in json.loads(recipe['items']):
-            cur=con.execute('UPDATE ingredients SET stock=stock-? WHERE name=? AND stock>=?',(float(item['qty'])*new_qty,item['ingredient'],float(item['qty'])*new_qty))
-            if not cur.rowcount: con.rollback(); con.close(); return jsonify(error=f"Estoque insuficiente: {item['ingredient']}"),400
-        con.execute('UPDATE sales SET quantity=?,total=? WHERE id=?',(new_qty,float(recipe['price'])*new_qty,sale_id))
-    con.commit(); con.close(); return jsonify(ok=True)
+    con=db()
+    try:
+        con.execute('BEGIN IMMEDIATE'); sale=con.execute('SELECT * FROM sales WHERE id=?',(sale_id,)).fetchone()
+        if not sale: con.rollback(); return jsonify(error='Venda não encontrada.'),404
+        recipe=con.execute('SELECT * FROM recipes WHERE id=?',(sale['recipe_id'],)).fetchone()
+        snapshot=json.loads(sale['stock_snapshot'] or '[]');
+        if snapshot:
+            reverse_sale_stock(con,sale)
+        elif recipe:  # Restore legacy sale rows created before movement snapshots existed.
+            for item in json.loads(recipe['items']): con.execute('UPDATE ingredients SET stock=stock+?,updated_at=? WHERE name=?',(float(item['qty'])*sale['quantity'],datetime.now().isoformat(),item['ingredient']))
+        if request.method=='DELETE':
+            con.execute('DELETE FROM sales WHERE id=?',(sale_id,)); con.commit(); return jsonify(ok=True)
+        new_qty=int((request.json or {}).get('quantity',0))
+        if new_qty<1 or new_qty>500: raise ValueError('Quantidade de unidades inválida.')
+        if snapshot:
+            details=json.loads(sale['complements'] or '{}')
+            for portion in range(new_qty):
+                for entry in snapshot: consume_stock(con,entry['ingredient_id'],entry['stock_delta'],entry['base_quantity'],entry['unit'],sale_id,0,'SAIDA_VENDA',details)
+        elif recipe:
+            for item in json.loads(recipe['items']):
+                inv=con.execute('SELECT id,name,unit FROM ingredients WHERE name=?',(item['ingredient'],)).fetchone()
+                if not inv: raise ValueError(f"Insumo não cadastrado: {item['ingredient']}")
+                for portion in range(new_qty): consume_stock(con,inv['id'],float(item['qty']),float(item['qty']),inv['unit'],sale_id,0,'SAIDA_VENDA',{'product':recipe['name'],'legacy_recipe':json.loads(recipe['items'])})
+        con.execute('UPDATE sales SET quantity=?,total=? WHERE id=?',(new_qty,float(recipe['price'])*new_qty,sale_id)); con.commit(); return jsonify(ok=True)
+    except ValueError as error:
+        con.rollback(); return jsonify(error=str(error)),400
+    except Exception:
+        con.rollback(); app.logger.exception('Falha ao estornar ou corrigir venda'); return jsonify(error='Não foi possível atualizar a venda e o estoque.'),500
+    finally: con.close()
 
 @app.post('/api/purchases')
 def purchase():
