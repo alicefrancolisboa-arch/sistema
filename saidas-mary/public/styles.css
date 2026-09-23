@@ -9,7 +9,7 @@
 .brand{font-size:18px}.hero{background:linear-gradient(115deg,#a93470,#c24b87)}.sidebar-foot p{color:#a93470}.stat.accent{background:#fce8f1;border-color:#f4d1e1}.stat.accent strong{color:#963260}/* Central de gestão: organização inspirada na referência, identidade rosa da Mary. */
 :root{--radius:16px;--paper:#fff5f9;--line:#efd3e0;--ink:#442335;--muted:#896677}
 .sidebar{background:linear-gradient(165deg,#57203d,#35172a);border-right:0;color:#fff1f7;width:248px;padding:28px 18px}
-.brand{color:#fff1f7;font-family:inherit;font-weight:750;letter-spacing:-.5px}.brand small{color:#e8adc8}.brand-mark{background:#f6c4da;color:#78254d;border-radius:14px}
+.brand{color:#fff1f7;font-family:inherit;font-weight:750;letter-spacing:-.5px}.brand small{color:#e8adc8}.brand-mark{background:#f6c4da;color:#78254d;border-radius:14px;display:grid;place-items:center;overflow:hidden}.brand-mark img{width:100%;height:100%;display:block}
 .sidebar nav a{color:#eac9d9;border:1px solid transparent;border-radius:11px;margin-bottom:7px}.sidebar nav a:hover{background:#ffffff0c;color:white}.sidebar nav a.active{background:linear-gradient(110deg,#ac3e72,#883256);color:white;border-color:#c56993;box-shadow:0 5px 16px #200b1c26}
 .nav-caption{font-size:10px;font-weight:700;letter-spacing:1.8px;color:#d9a2bd;margin:25px 12px 14px}
 .sidebar-foot{border:1px solid #a6608170;background:#ffffff06;border-radius:14px;padding:18px;color:#eac9d9}.sidebar-foot p,.sidebar-foot strong{color:#ffe5f1}.sidebar-foot .dot{background:#f5abc9}
