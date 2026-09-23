@@ -51,6 +51,14 @@ test('Gemini tenta outro modelo quando o primeiro falha',async()=>{
  const tried=[];const r=await recognize('image','key','gemini-3.6-flash',{gemini:async(_image,_key,model)=>{tried.push(model);if(model==='gemini-3.6-flash'){const e=Error('indisponível');e.modelStatus=503;throw e;}return {source:'gemini',warning:'',rows:[{name:'Ana',total:3,uncertain:false,note:''}]};},ocr:async()=>{throw Error('OCR não deveria ser chamado');}});
  assert.deepEqual(tried,['gemini-3.6-flash','gemini-3.8-flash']);assert.equal(r.source,'gemini');assert.equal(r.model,'gemini-3.8-flash');
 });
+test('a mesma foto sem mudança pode ser conferida em outro dia e gera zero novos',async t=>{
+ const {request,store}=await start(t,{vision:async()=>({source:'gemini',warning:'',rows:[{name:'Ana',total:1,uncertain:false,note:''}]})});
+ const c=store.saveCustomer({name:'Ana'}),sheet=store.createSheet({name:'Folha',purchased:'2026-08-18'}),image='data:image/png;base64,QUJD';
+ const first=await (await request('/api/photos/read',{sheet:sheet.id,image,purchased:'2026-08-18'})).json();
+ await request('/api/photos/confirm',{draft:first.id,purchased:'2026-08-18',reviewed:true,operation:randomUUID(),rows:[{customer:c.id,total:1,previous:0,matchConfirmed:true,purchased:'2026-08-18'}]});
+ const next=await request('/api/photos/read',{sheet:sheet.id,image,purchased:'2026-08-19'});assert.equal(next.status,200);const review=await next.json();assert.equal(review.rows[0].previous,1);assert.equal(review.rows[0].total,1);
+ const saved=await request('/api/photos/confirm',{draft:review.id,purchased:'2026-08-19',reviewed:true,operation:randomUUID(),rows:[{customer:c.id,total:1,previous:1,matchConfirmed:true,purchased:'2026-08-19'}]});assert.equal((await saved.json()).added,0);assert.equal(store.snapshot().sales.filter(s=>s.customer===c.id).length,1);
+});
 test('Gemini tenta outro modelo se não encontrou riscos novos e escolhe o maior total confiável',async()=>{
  const tried=[];const r=await recognize('image','key','gemini-3.6-flash',{previousTallies:{Ana:8},gemini:async(_image,_key,model,_fetcher,baseline)=>{tried.push(model);assert.equal(baseline.Ana,8);return {source:'gemini',warning:'',rows:[{name:'Ana',total:model==='gemini-3.6-flash'?8:11,uncertain:false,note:''}]};},ocr:async()=>{throw Error('OCR não deveria ser chamado');}});
  assert.deepEqual(tried,['gemini-3.6-flash','gemini-3.8-flash']);assert.equal(r.rows[0].total,11);assert.equal(r.model,'gemini-3.8-flash');

@@ -149,7 +149,7 @@ async function readPhoto(button){
  if(!photoDate)throw Error('Informe a data das compras.');
  if(dueDate(photoDate,state.extraHolidays)!==state.sheets.find(s=>s.id===selectedSheet)?.due)throw Error('Essa data pertence a outro vencimento. Selecione a folha correta ou comece uma nova.');
  button.disabled=true;button.textContent='Lendo a folha… aguarde';$('#photo-error').textContent='';
- try{const readingSheet=selectedSheet,readingPhoto=photo;const result=await api('photos/read',{image:photo,sheet:selectedSheet});if(selectedSheet!==readingSheet||photo!==readingPhoto){toast('A folha mudou durante a leitura. Envie novamente a foto desejada.');return;}review=result;review.operation=id();if(!review.rows.length)review.rows.push({name:'',customer:'',total:null,previous:0,uncertain:true,note:'Não foi possível recuperar uma linha com segurança. Confira a foto e preencha manualmente.'});render();$('#review')?.scrollIntoView({behavior:'smooth',block:'start'});}
+ try{const readingSheet=selectedSheet,readingPhoto=photo;const result=await api('photos/read',{image:photo,sheet:selectedSheet,purchased:photoDate});if(selectedSheet!==readingSheet||photo!==readingPhoto){toast('A folha mudou durante a leitura. Envie novamente a foto desejada.');return;}review=result;review.operation=id();if(!review.rows.length)review.rows.push({name:'',customer:'',total:null,previous:0,uncertain:true,note:'Não foi possível recuperar uma linha com segurança. Confira a foto e preencha manualmente.'});render();$('#review')?.scrollIntoView({behavior:'smooth',block:'start'});}
  catch(e){review=null;const target=$('#photo-error');if(target)target.textContent=e.message;else toast(e.message);}
  finally{button.disabled=false;button.textContent='Ler nomes e risquinhos';}
 }

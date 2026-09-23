@@ -7,6 +7,7 @@ import { randomBytes,createHash,timingSafeEqual,randomUUID } from 'node:crypto';
 import { CloudStore } from './lib/cloud-store.mjs';
 import { Store,norm } from './lib/store.mjs';
 import { recognize } from './lib/vision.mjs';
+import { date,today } from './lib/dates.mjs';
 const root=dirname(fileURLToPath(import.meta.url));
 export function createApp({dbPath=join(process.env.DATA_DIR||join(root,'data'),'acai.sqlite'),apiKey=process.env.GEMINI_API_KEY||'',password=process.env.APP_PASSWORD||'',username=process.env.APP_USER||'CASADOACAI',model=process.env.GEMINI_MODEL||'gemini-3.8-flash',vision=recognize,cloud=null}={}){
  if(!cloud&&dbPath!==':memory:')mkdirSync(dirname(dbPath),{recursive:true});
@@ -67,7 +68,8 @@ export function createApp({dbPath=join(process.env.DATA_DIR||join(root,'data'),'
     if(path==='/api/photos/read'){
      const sheet=await store.sheet(b.sheet);
      if(typeof b.image!=='string'||b.image.length>14000000||!/^data:image\/(jpeg|png|webp);base64,[A-Za-z0-9+/=]+$/.test(b.image))throw Error('Escolha uma imagem JPG, PNG ou WebP com até 10 MB.');
-     const raw=Buffer.from(b.image.split(',')[1],'base64'),hash=createHash('sha256').update(raw).digest('hex');
+     const photoDay=b.purchased||today();date(photoDay);
+     const raw=Buffer.from(b.image.split(',')[1],'base64'),hash=createHash('sha256').update(raw).update('|'+photoDay).digest('hex');
      if(await store.imported(hash))throw Error('Esta foto já foi contabilizada. Envie uma foto atualizada da mesma folha.');
      if(reading)return send(res,429,{error:'Uma foto já está sendo lida. Aguarde a conclusão.'});
      for(const [id,d]of drafts)if(d.expires<Date.now())drafts.delete(id);
