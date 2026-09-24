@@ -51,6 +51,12 @@ test('Gemini tenta outro modelo quando o primeiro falha',async()=>{
  const tried=[];const r=await recognize('image','key','gemini-3.6-flash',{gemini:async(_image,_key,model)=>{tried.push(model);if(model==='gemini-3.6-flash'){const e=Error('indisponível');e.modelStatus=503;throw e;}return {source:'gemini',warning:'',rows:[{name:'Ana',total:3,uncertain:false,note:''}]};},ocr:async()=>{throw Error('OCR não deveria ser chamado');}});
  assert.deepEqual(tried,['gemini-3.6-flash','gemini-3.8-flash']);assert.equal(r.source,'gemini');assert.equal(r.model,'gemini-3.8-flash');
 });
+test('interface publicada contém todos os menus e atalhos operacionais',async t=>{
+ const {request}=await start(t),html=await (await request('/')).text(),script=await (await request('/app.js')).text(),manifest=await (await request('/manifest.webmanifest')).json();
+ for(const hash of ['#inicio','#clientes','#folhas','#cobrancas','#estoque','#historico','#ajustes'])assert.ok(html.includes(hash),hash);
+ for(const feature of ['function debtors','function stockPage','function sheets','function billing','function history','function clients'])assert.ok(script.includes(feature),feature);
+ assert.equal(manifest.name,'Açaí da Mary');assert.ok(html.includes('/icon.svg'));
+});
 test('a mesma foto sem mudança pode ser conferida em outro dia e gera zero novos',async t=>{
  const {request,store}=await start(t,{vision:async()=>({source:'gemini',warning:'',rows:[{name:'Ana',total:1,uncertain:false,note:''}]})});
  const c=store.saveCustomer({name:'Ana'}),sheet=store.createSheet({name:'Folha',purchased:'2026-08-18'}),image='data:image/png;base64,QUJD';
@@ -68,6 +74,19 @@ test('mudança para novo vencimento cria a remessa separada e reinicia o contado
  assert.equal(reading.rows[0].previous,0);assert.notEqual(reading.id,undefined);
  const saved=await request('/api/photos/confirm',{draft:reading.id,purchased:'2026-09-20',reviewed:true,operation:randomUUID(),rows:[{customer:c.id,name:'Bianca',total:1,previous:0,matchConfirmed:true,purchased:'2026-09-20'}]});
  assert.equal((await saved.json()).added,1);const sales=store.snapshot().sales.filter(s=>s.customer===c.id);assert.deepEqual(sales.map(s=>s.qty),[1,2]);assert.equal(store.balances().filter(s=>s.customer===c.id).reduce((n,s)=>n+s.cents,0),1000);
+});
+test('fluxo completo: folha cumulativa, pagamento, pendência e nova remessa',async t=>{
+ let total=2;const {request,store}=await start(t,{vision:async()=>({source:'gemini',warning:'',rows:[{name:'Bianca',total,uncertain:false,note:''}]})});
+ const bianca=store.saveCustomer({name:'Bianca'}),ana=store.saveCustomer({name:'Ana'}),first=store.createSheet({name:'Remessa dia 20',purchased:'2026-09-18'});
+ store.commit({sheet:first.id,hash:'6'.repeat(64),purchased:'2026-09-18',operation:randomUUID(),reviewed:true,rows:[{customer:bianca.id,total:2,previous:0,matchConfirmed:true},{customer:ana.id,total:2,previous:0,matchConfirmed:true}]});
+ total=2;let read=await (await request('/api/photos/read',{sheet:first.id,image:'data:image/png;base64,Bg==',purchased:'2026-09-19'})).json();let saved=await request('/api/photos/confirm',{draft:read.id,purchased:'2026-09-19',reviewed:true,operation:randomUUID(),rows:[{customer:bianca.id,name:'Bianca',total:2,previous:2,matchConfirmed:true,purchased:'2026-09-19'}]});assert.equal((await saved.json()).added,0);
+ total=3;read=await (await request('/api/photos/read',{sheet:first.id,image:'data:image/png;base64,Bw==',purchased:'2026-09-19'})).json();saved=await request('/api/photos/confirm',{draft:read.id,purchased:'2026-09-19',reviewed:true,operation:randomUUID(),rows:[{customer:bianca.id,name:'Bianca',total:3,previous:2,matchConfirmed:true,purchased:'2026-09-19'}]});assert.equal((await saved.json()).added,1);
+ store.payment({customer:bianca.id,cents:3000,paid:'2026-09-20',operation:randomUUID()});
+ total=1;read=await (await request('/api/photos/read',{sheet:first.id,image:'data:image/png;base64,CA==',purchased:'2026-09-20'})).json();assert.equal(read.rows[0].previous,0);saved=await request('/api/photos/confirm',{draft:read.id,purchased:'2026-09-20',reviewed:true,operation:randomUUID(),rows:[{customer:bianca.id,name:'Bianca',total:1,previous:0,matchConfirmed:true,purchased:'2026-09-20'}]});assert.equal((await saved.json()).added,1);
+ const second=store.snapshot().sheets.find(s=>s.due==='2026-10-07');store.commit({sheet:second.id,hash:'9'.repeat(64),purchased:'2026-09-20',operation:randomUUID(),reviewed:true,rows:[{customer:ana.id,total:1,previous:0,matchConfirmed:true}]});
+ assert.equal(store.balances().filter(x=>x.customer===bianca.id).reduce((n,x)=>n+x.cents,0),1000);assert.equal(store.balances().filter(x=>x.customer===ana.id).reduce((n,x)=>n+x.cents,0),3000);
+ assert.deepEqual([...new Set(store.snapshot().sales.filter(x=>x.customer===ana.id).map(x=>x.due))].sort(),['2026-09-20','2026-10-07']);
+ store.saveDailyStock({day:'2026-09-21',cups:6});store.saveDailyStock({day:'2026-09-22',cups:4});store.saveDailyStock({day:'2026-09-23',cups:3});assert.equal(store.snapshot().dailyStock.reduce((n,x)=>n+x.cups,0),13);
 });
 test('Gemini tenta outro modelo se não encontrou riscos novos e escolhe o maior total confiável',async()=>{
  const tried=[];const r=await recognize('image','key','gemini-3.6-flash',{previousTallies:{Ana:8},gemini:async(_image,_key,model,_fetcher,baseline)=>{tried.push(model);assert.equal(baseline.Ana,8);return {source:'gemini',warning:'',rows:[{name:'Ana',total:model==='gemini-3.6-flash'?8:11,uncertain:false,note:''}]};},ocr:async()=>{throw Error('OCR não deveria ser chamado');}});
