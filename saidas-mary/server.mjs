@@ -107,7 +107,7 @@ export function createApp({dbPath=join(process.env.DATA_DIR||join(root,'data'),'
    const routes={'/':'public/index.html','/app.js':'public/app.js','/styles.css':'public/styles.css','/dates.mjs':'lib/dates.mjs','/manifest.webmanifest':'public/manifest.webmanifest','/icon.svg':'public/icon.svg','/sw.js':'public/sw.js'};
    if(!routes[path]||!['GET','HEAD'].includes(req.method))return send(res,404,{error:'Página não encontrada.'});
    const mime=path.endsWith('.css')?'text/css':path.endsWith('.js')||path.endsWith('.mjs')?'text/javascript':path.endsWith('.svg')?'image/svg+xml':path.endsWith('.webmanifest')?'application/manifest+json':'text/html';
-   res.writeHead(200,{'Content-Type':mime+'; charset=utf-8','Cache-Control':'no-cache'});
+   res.writeHead(200,{'Content-Type':mime+'; charset=utf-8','Cache-Control':'no-store, max-age=0, must-revalidate'});
    res.end(req.method==='HEAD'?undefined:readFileSync(join(root,routes[path])));
   }catch(e){send(res,e.status||400,{error:e.name==='TimeoutError'?'A leitura demorou demais. Tente uma foto mais nítida.':e.message.includes('SQLITE')?'Não foi possível salvar. Confira os dados.':e.message});}
  });

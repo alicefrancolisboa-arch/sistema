@@ -11,7 +11,7 @@ async function start(t,options={}){
  return {...app,url,request};
 }
 test('servidor entrega telas e nunca serve arquivos privados',async t=>{
- const {request}=await start(t);assert.equal((await request('/')).status,200);assert.equal((await request('/app.js')).status,200);
+ const {request}=await start(t);assert.equal((await request('/')).status,200);const script=await request('/app.js');assert.equal(script.status,200);assert.match(script.headers.get('cache-control'),/no-store/);
  for(const p of ['/.env','/data/acai.sqlite','/android/signing/password.txt'])assert.equal((await request(p)).status,404);
  assert.equal((await request('/api/state',undefined,{Origin:'https://evil.invalid'})).status,403);
 });
