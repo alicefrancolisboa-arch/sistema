@@ -7,7 +7,7 @@ import { randomBytes,createHash,timingSafeEqual,randomUUID } from 'node:crypto';
 import { CloudStore } from './lib/cloud-store.mjs';
 import { Store,norm } from './lib/store.mjs';
 import { recognize } from './lib/vision.mjs';
-import { date,today } from './lib/dates.mjs';
+import { date,today,dueDate } from './lib/dates.mjs';
 const root=dirname(fileURLToPath(import.meta.url));
 export function createApp({dbPath=join(process.env.DATA_DIR||join(root,'data'),'acai.sqlite'),apiKey=process.env.GEMINI_API_KEY||'',password=process.env.APP_PASSWORD||'',username=process.env.APP_USER||'CASADOACAI',model=process.env.GEMINI_MODEL||'gemini-3.8-flash',vision=recognize,cloud=null}={}){
  if(!cloud&&dbPath!==':memory:')mkdirSync(dirname(dbPath),{recursive:true});
@@ -66,15 +66,21 @@ export function createApp({dbPath=join(process.env.DATA_DIR||join(root,'data'),'
      const result=await store.restore(b.backup);drafts.clear();return send(res,200,result);
     }
     if(path==='/api/photos/read'){
-     const sheet=await store.sheet(b.sheet);
+     let sheet=await store.sheet(b.sheet);
      if(typeof b.image!=='string'||b.image.length>14000000||!/^data:image\/(jpeg|png|webp);base64,[A-Za-z0-9+/=]+$/.test(b.image))throw Error('Escolha uma imagem JPG, PNG ou WebP com até 10 MB.');
-     const photoDay=b.purchased||today();date(photoDay);
+     const hasPhotoDay=typeof b.purchased==='string',photoDay=b.purchased||today();date(photoDay);
+     let state=await store.snapshot();
+     if(hasPhotoDay&&sheet.due!==dueDate(photoDay,state.extraHolidays)){
+      const targetDue=dueDate(photoDay,state.extraHolidays),existing=state.sheets.filter(s=>s.due===targetDue).sort((a,b)=>b.created.localeCompare(a.created))[0];
+      sheet=existing||await store.createSheet({name:'Remessa '+targetDue,purchased:photoDay});
+      if(!existing)state=await store.snapshot();
+     }
      const raw=Buffer.from(b.image.split(',')[1],'base64'),hash=createHash('sha256').update(raw).update('|'+photoDay).digest('hex');
      if(await store.imported(hash))throw Error('Esta foto já foi contabilizada. Envie uma foto atualizada da mesma folha.');
      if(reading)return send(res,429,{error:'Uma foto já está sendo lida. Aguarde a conclusão.'});
      for(const [id,d]of drafts)if(d.expires<Date.now())drafts.delete(id);
      if(drafts.size>=20)throw Error('Há muitas leituras em revisão. Conclua uma delas ou aguarde.');
-     const customers=(await store.snapshot()).customers,totals=await store.totals(sheet.id),customerById=new Map(customers.map(c=>[c.id,c.name]));
+     const customers=state.customers,totals=await store.totals(sheet.id),customerById=new Map(customers.map(c=>[c.id,c.name]));
      const previousTallies=Object.fromEntries(totals.filter(t=>t.qty>0&&customerById.has(t.customer)).map(t=>[customerById.get(t.customer),t.qty]));
      reading=true;let result;
      try{result=await vision(b.image,apiKey,model,{previousTallies});}finally{reading=false;}
