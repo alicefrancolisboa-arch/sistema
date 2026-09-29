@@ -2,6 +2,7 @@ import os
 import sys
 import tempfile
 import unittest
+from contextlib import closing
 from pathlib import Path
 TEMP = tempfile.TemporaryDirectory()
 os.environ['DATA_DIR'] = TEMP.name
@@ -17,13 +18,14 @@ class FinanceTests(unittest.TestCase):
             with tempfile.TemporaryDirectory() as directory:
                 aloha.DATA_DIR = Path(directory)
                 aloha.DB = Path(directory) / 'acai.db'
-                with sqlite3.connect(aloha.DB) as con:
+                with closing(sqlite3.connect(aloha.DB)) as con:
                     con.execute('CREATE TABLE preserved_marker(value TEXT)')
                     con.execute("INSERT INTO preserved_marker VALUES('original')")
+                    con.commit()
                 aloha.init_db()
                 snapshots = list((Path(directory) / 'backups').glob('*.db'))
                 self.assertEqual(len(snapshots), 1)
-                with sqlite3.connect(snapshots[0]) as con:
+                with closing(sqlite3.connect(snapshots[0])) as con:
                     self.assertEqual(con.execute('SELECT value FROM preserved_marker').fetchone()[0], 'original')
                     self.assertIsNone(con.execute("SELECT name FROM sqlite_master WHERE name='finance_sales'").fetchone())
                 aloha.init_db()

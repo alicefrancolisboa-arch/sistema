@@ -1,4 +1,5 @@
 import json, os, sqlite3, base64
+from contextlib import closing
 from datetime import datetime
 from pathlib import Path
 from flask import Flask, jsonify, render_template, request
@@ -28,13 +29,13 @@ def db():
 def init_db():
     # Take a consistent SQLite snapshot before the first financial migration.
     if DB.exists():
-        with sqlite3.connect(DB) as source:
+        with closing(sqlite3.connect(DB)) as source:
             migrated = source.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='finance_sales'").fetchone()
             if not migrated:
                 backups = DATA_DIR / 'backups'
                 backups.mkdir(exist_ok=True)
                 snapshot = backups / ('before-finance-' + datetime.now().strftime('%Y%m%d-%H%M%S-%f') + '.db')
-                with sqlite3.connect(snapshot) as target:
+                with closing(sqlite3.connect(snapshot)) as target:
                     source.backup(target)
     con = db()
     con.executescript('''
