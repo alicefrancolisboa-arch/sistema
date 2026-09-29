@@ -2,10 +2,10 @@ import json, os, sqlite3, base64
 from contextlib import closing
 from datetime import datetime
 from pathlib import Path
-from flask import Flask, jsonify, render_template, request
+from flask import Flask, jsonify, render_template, request, g, has_request_context
 
 ROOT = Path(__file__).parent
-# No Render, os dados ficam no disco persistente configurado no render.yaml.
+# Em producao, Turso e a fonte permanente; DATA_DIR e apenas uma copia local.
 DATA_DIR = Path(os.getenv('DATA_DIR', ROOT))
 DATA_DIR.mkdir(parents=True, exist_ok=True)
 DB = DATA_DIR / 'acai.db'
@@ -22,7 +22,7 @@ if env_file.exists():
             os.environ.setdefault('GEMINI_API_KEY', line.split('=', 1)[1].strip())
 
 def db():
-    con = sqlite3.connect(DB)
+    con = sqlite3.connect(g.get('cloud_db', DB) if has_request_context() else DB)
     con.row_factory = sqlite3.Row
     return con
 
@@ -185,19 +185,46 @@ def login():
 def shopping_list():
     return jsonify(rows('SELECT * FROM shopping_list ORDER BY purchased, name'))
 
+def shopping_values(data, existing=None):
+    from math import isfinite
+    if not isinstance(data, dict): raise ValueError('Dados inválidos.')
+    values = dict(existing or dict(name='', unit='un', quantity=1, purchased=0))
+    values.update({k:v for k,v in data.items() if k in ('name','unit','quantity','purchased')})
+    name, unit = str(values['name']).strip(), str(values['unit']).strip()
+    try: quantity = float(values['quantity'])
+    except (TypeError, ValueError): raise ValueError('Informe uma quantidade válida.')
+    if not name or len(name)>200: raise ValueError('Informe o nome do item (até 200 caracteres).')
+    if not unit or len(unit)>30: raise ValueError('Informe uma unidade válida.')
+    if not isfinite(quantity) or not 0<quantity<=1000000000: raise ValueError('A quantidade deve ser maior que zero.')
+    purchased = values['purchased']
+    if purchased not in (True, False, 0, 1): raise ValueError('Estado de compra inválido.')
+    return name, unit, quantity, int(purchased), datetime.now().isoformat()
+
 @app.post('/api/shopping-list')
 def shopping_add():
-    d=request.json or {}; name=(d.get('name') or '').strip()
-    if not name: return jsonify(error='Informe o item.'),400
-    con=db(); con.execute('INSERT INTO shopping_list(name,unit,quantity,purchased,ingredient_id,updated_at) VALUES(?,?,?,?,?,?)',(name,d.get('unit','un'),float(d.get('quantity',1)),int(bool(d.get('purchased'))),d.get('ingredient_id'),datetime.now().isoformat())); con.commit(); con.close(); return jsonify(ok=True)
+    try: values = shopping_values(request.get_json(silent=True))
+    except ValueError as error: return jsonify(error=str(error)), 400
+    con=db()
+    try:
+        cursor=con.execute('INSERT INTO shopping_list(name,unit,quantity,purchased,updated_at) VALUES(?,?,?,?,?)', values)
+        con.commit()
+        return jsonify(ok=True, id=cursor.lastrowid)
+    finally: con.close()
 
 @app.route('/api/shopping-list/<int:item_id>', methods=['PUT','DELETE'])
 def shopping_detail(item_id):
     con=db()
-    if request.method=='DELETE': con.execute('DELETE FROM shopping_list WHERE id=?',(item_id,))
-    else:
-        d=request.json or {}; con.execute('UPDATE shopping_list SET name=?,unit=?,quantity=?,purchased=?,updated_at=? WHERE id=?',(d.get('name',''),d.get('unit','un'),float(d.get('quantity',1)),int(bool(d.get('purchased'))),datetime.now().isoformat(),item_id))
-    con.commit(); con.close(); return jsonify(ok=True)
+    try:
+        existing=con.execute('SELECT * FROM shopping_list WHERE id=?',(item_id,)).fetchone()
+        if not existing: return jsonify(error='Item não encontrado.'), 404
+        if request.method=='DELETE': con.execute('DELETE FROM shopping_list WHERE id=?',(item_id,))
+        else:
+            values=shopping_values(request.get_json(silent=True), existing)
+            con.execute('UPDATE shopping_list SET name=?,unit=?,quantity=?,purchased=?,updated_at=? WHERE id=?',(*values,item_id))
+        con.commit()
+        return jsonify(ok=True)
+    except ValueError as error: return jsonify(error=str(error)), 400
+    finally: con.close()
 
 @app.get('/api/dashboard')
 def dashboard():
@@ -586,8 +613,29 @@ def scan_invoice():
 from finance import register_finance
 register_finance(app, db)
 
-init_db()
-from maintenance import reset_for_platform_launch
-reset_for_platform_launch(DB, DATA_DIR)
+def initialize_storage():
+    init_db()
+
+storage_driver = os.getenv('STORAGE_DRIVER', 'local')
+if os.getenv('RENDER') and storage_driver != 'turso':
+    raise RuntimeError('Configure o banco permanente Turso antes de iniciar no Render.')
+if storage_driver == 'turso':
+    from cloud_store import CloudStore, configure_requests
+    cloud = CloudStore(os.environ['TURSO_DATABASE_URL'], os.environ['TURSO_AUTH_TOKEN'])
+    cloud.bootstrap(DB, initialize_storage)
+    configure_requests(app, cloud)
+else:
+    initialize_storage()
+
+@app.get('/api/storage-status')
+def storage_status():
+    return jsonify(storage=storage_driver, persistent=storage_driver == 'turso',
+                   revision=g.get('cloud_revision'))
+
+@app.after_request
+def disable_api_cache(response):
+    if request.path.startswith('/api/'):
+        response.headers['Cache-Control'] = 'no-store'
+    return response
 if __name__=='__main__':
     app.run(host='0.0.0.0',port=5000,debug=True)

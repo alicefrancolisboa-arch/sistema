@@ -11,6 +11,21 @@ import app as aloha
 from finance import migrate
 
 class FinanceTests(unittest.TestCase):
+    def test_shopping_toggle_preserves_item_and_edits(self):
+        response=self.client.post('/api/shopping-list',json={'name':'Copos','quantity':2,'unit':'caixas'})
+        self.assertEqual(response.status_code,200)
+        ident=response.json['id']
+        self.assertEqual(self.client.put('/api/shopping-list/'+str(ident),json={'purchased':True}).status_code,200)
+        row=next(r for r in self.client.get('/api/shopping-list').json if r['id']==ident)
+        self.assertEqual((row['name'],row['quantity'],row['unit'],row['purchased']),('Copos',2,'caixas',1))
+        self.assertEqual(self.client.put('/api/shopping-list/'+str(ident),json={'quantity':3}).status_code,200)
+        self.assertEqual(self.client.delete('/api/shopping-list/'+str(ident)).status_code,200)
+        self.assertFalse(any(r['id']==ident for r in self.client.get('/api/shopping-list').json))
+
+    def test_shopping_invalid_quantity_rejected(self):
+        for value in (0,-1,'NaN','Infinity','oops'):
+            self.assertEqual(self.client.post('/api/shopping-list',json={'name':'Copos','quantity':value}).status_code,400)
+
     def test_platforms_share_period_and_net_subtracts_costs(self):
         base = dict(kind='day', start='2026-09-20', end='2026-09-20')
         for platform, total, fee in [('ifood', 1000, 200), ('nine', 500, 50)]:
@@ -40,13 +55,18 @@ class FinanceTests(unittest.TestCase):
     def test_requested_reset_is_once_and_preserves_backup(self):
         from maintenance import reset_for_platform_launch, RESET_ID
         self.client.post('/api/finance/sales', json=self.sale())
-        con=aloha.db(); con.execute('DELETE FROM maintenance_migrations WHERE id=?', (RESET_ID,)); con.commit(); con.close()
+        con=aloha.db(); con.execute('CREATE TABLE IF NOT EXISTS maintenance_migrations (id TEXT PRIMARY KEY, applied_at TEXT NOT NULL)'); con.execute('DELETE FROM maintenance_migrations WHERE id=?', (RESET_ID,)); con.commit(); con.close()
         self.assertTrue(reset_for_platform_launch(aloha.DB, aloha.DATA_DIR))
         self.assertEqual(self.report()['gross'], 0)
         self.assertTrue(list((aloha.DATA_DIR/'backups').glob('before-requested-reset-*.db')))
         self.client.post('/api/finance/sales', json=self.sale())
         self.assertFalse(reset_for_platform_launch(aloha.DB, aloha.DATA_DIR))
         self.assertEqual(self.report()['gross'], 10000)
+
+    def test_startup_preserves_records_without_reset_marker(self):
+        self.client.post('/api/finance/costs', json=self.cost(total=123))
+        aloha.initialize_storage()
+        self.assertEqual(self.report()['costs'], 12300)
 
     def test_backup_precedes_first_migration(self):
         import sqlite3
@@ -155,9 +175,9 @@ class FinanceTests(unittest.TestCase):
         self.client.post('/api/finance/costs',json=self.cost(date='2026-09-19'))
         r=self.client.get('/api/finance/report?start=2026-09-20&end=2026-09-20').json
         self.assertEqual(r['previous']['costs'],2000); self.assertEqual(r['current']['costs'],0)
-    def test_only_three_menus(self):
+    def test_four_requested_menus(self):
         html=self.client.get('/').text
-        self.assertEqual(html.count('data-page='),3)
+        self.assertEqual(html.count('data-page='),4)
         self.assertNotIn('/static/app.js',html)
 
 if __name__=='__main__': unittest.main()
