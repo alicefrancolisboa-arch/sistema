@@ -26,6 +26,16 @@ def db():
     return con
 
 def init_db():
+    # Take a consistent SQLite snapshot before the first financial migration.
+    if DB.exists():
+        with sqlite3.connect(DB) as source:
+            migrated = source.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='finance_sales'").fetchone()
+            if not migrated:
+                backups = DATA_DIR / 'backups'
+                backups.mkdir(exist_ok=True)
+                snapshot = backups / ('before-finance-' + datetime.now().strftime('%Y%m%d-%H%M%S-%f') + '.db')
+                with sqlite3.connect(snapshot) as target:
+                    source.backup(target)
     con = db()
     con.executescript('''
     CREATE TABLE IF NOT EXISTS ingredients (id INTEGER PRIMARY KEY, name TEXT UNIQUE NOT NULL, unit TEXT NOT NULL, stock REAL NOT NULL DEFAULT 0, cost REAL NOT NULL DEFAULT 0, updated_at TEXT, category TEXT NOT NULL DEFAULT 'insumo', package_size REAL NOT NULL DEFAULT 0);
@@ -140,6 +150,12 @@ def init_db():
         con.execute('INSERT OR IGNORE INTO complement_stock_rules(ingredient_id,grams_per_portion) VALUES(?,?)',(ingredient_id,grams))
     con.execute("INSERT OR IGNORE INTO ingredients(name,unit,stock,cost,updated_at,category) VALUES('Barca 600 ml','un',0,0,?,'embalagem')",(datetime.now().isoformat(),))
     con.commit(); con.close()
+    from finance import migrate
+    con = db()
+    try:
+        migrate(con)
+    finally:
+        con.close()
 
 def rows(q, args=()):
     con=db(); out=[dict(x) for x in con.execute(q,args).fetchall()]; con.close(); return out
@@ -150,6 +166,12 @@ def recipe_cost(recipe):
 
 @app.get('/')
 def home(): return render_template('index.html')
+
+@app.after_request
+def fresh_financial_interface(response):
+    if request.path == '/' or request.path.startswith('/api/') or request.path.startswith('/static/finance.'):
+        response.headers['Cache-Control'] = 'no-store, max-age=0'
+    return response
 
 @app.post('/api/login')
 def login():
@@ -559,6 +581,9 @@ def scan_invoice():
         return jsonify(source='OCR local',data={'supplier':'','items':[],'raw_text':text})
     except Exception:
         return jsonify(error='Não foi possível ler a nota. Cadastre os itens manualmente.', fallback=True, diagnostic=diagnostic),422
+
+from finance import register_finance
+register_finance(app, db)
 
 if __name__=='__main__':
     init_db(); app.run(host='0.0.0.0',port=5000,debug=True)
