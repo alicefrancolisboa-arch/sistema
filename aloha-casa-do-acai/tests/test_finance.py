@@ -11,6 +11,43 @@ import app as aloha
 from finance import migrate
 
 class FinanceTests(unittest.TestCase):
+    def test_platforms_share_period_and_net_subtracts_costs(self):
+        base = dict(kind='day', start='2026-09-20', end='2026-09-20')
+        for platform, total, fee in [('ifood', 1000, 200), ('nine', 500, 50)]:
+            response = self.client.post('/api/finance/sales', json=dict(base, platform=platform, total=total, platform_value=fee))
+            self.assertEqual(response.status_code, 200)
+        self.client.post('/api/finance/costs', json=self.cost(total=300))
+        report = self.report()
+        self.assertEqual((report['gross'], report['effective'], report['costs'], report['profit']), (150000, 125000, 30000, 95000))
+        self.assertEqual(report['channels']['ifood']['net'], 80000)
+        self.assertEqual(report['channels']['nine']['net'], 45000)
+        self.assertEqual(report['channels']['store']['gross'], 0)
+        self.assertFalse(report['unknown_net'])
+        self.assertEqual(self.client.post('/api/finance/sales', json=dict(base, platform='ifood', total=100, platform_value=0)).status_code, 400)
+
+    def test_platform_fee_validation_and_edit(self):
+        payload = dict(kind='week', start='2026-09-20', end='2026-09-26', platform='nine', total=700, platform_value=70)
+        response = self.client.post('/api/finance/sales', json=payload)
+        self.assertEqual(response.status_code, 200)
+        ident = response.json['id']
+        payload['platform_value'] = 140
+        self.assertEqual(self.client.put('/api/finance/sales/'+str(ident), json=payload).status_code, 200)
+        self.assertEqual(self.report('2026-09-20', '2026-09-26')['channels']['nine']['net'], 56000)
+        for fee in (701, -1, '', 'NaN'):
+            payload['platform_value'] = fee
+            self.assertEqual(self.client.put('/api/finance/sales/'+str(ident), json=payload).status_code, 400)
+
+    def test_requested_reset_is_once_and_preserves_backup(self):
+        from maintenance import reset_for_platform_launch, RESET_ID
+        self.client.post('/api/finance/sales', json=self.sale())
+        con=aloha.db(); con.execute('DELETE FROM maintenance_migrations WHERE id=?', (RESET_ID,)); con.commit(); con.close()
+        self.assertTrue(reset_for_platform_launch(aloha.DB, aloha.DATA_DIR))
+        self.assertEqual(self.report()['gross'], 0)
+        self.assertTrue(list((aloha.DATA_DIR/'backups').glob('before-requested-reset-*.db')))
+        self.client.post('/api/finance/sales', json=self.sale())
+        self.assertFalse(reset_for_platform_launch(aloha.DB, aloha.DATA_DIR))
+        self.assertEqual(self.report()['gross'], 10000)
+
     def test_backup_precedes_first_migration(self):
         import sqlite3
         original_db, original_dir = aloha.DB, aloha.DATA_DIR

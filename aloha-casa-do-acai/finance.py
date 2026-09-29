@@ -47,6 +47,9 @@ def migrate(con):
     CREATE INDEX IF NOT EXISTS finance_sales_dates ON finance_sales(start,end);
     CREATE INDEX IF NOT EXISTS finance_costs_date ON finance_costs(date);
     ''')
+    columns = {r['name'] for r in con.execute('PRAGMA table_info(finance_sales)')}
+    if 'platform' not in columns:
+        con.execute("ALTER TABLE finance_sales ADD COLUMN platform TEXT NOT NULL DEFAULT 'mixed'")
     con.executemany('INSERT OR IGNORE INTO finance_suggestions VALUES(?,?)', [('category', x) for x in CATEGORIES])
     # Source keys are stable, including after editing/deleting the financial copy.
     # Original inventory records and their reversal snapshots are never changed.
@@ -68,11 +71,24 @@ def register_finance(app, db):
         return con
 
     def sale_data(d):
+        platform = d.get('platform', 'mixed')
+        if platform not in ('ifood', 'nine', 'mixed'):
+            raise ValueError('Escolha iFood ou 99.')
+        if platform != 'mixed':
+            total = cents(d.get('total'))
+            fee = cents(d.get('platform_value'))
+            if fee > total:
+                raise ValueError('O valor da plataforma não pode superar o total de vendas.')
+            d = dict(d, store=0, ifood=0, nine=0, unknown=0,
+                     ifood_net=0, nine_net=0, ifood_fee=None, nine_fee=None,
+                     adjustment_note='')
+            d[platform] = str(Decimal(total) / 100)
+            d[platform+'_net'] = str(Decimal(total-fee) / 100)
         start, end = day(d.get('start')), day(d.get('end', d.get('start')))
         kind = d.get('kind', 'day')
         if kind not in ('day', 'week') or (kind == 'day' and end != start) or (kind == 'week' and (end-start).days != 6):
             raise ValueError('Lançamento diário cobre um dia; semanal cobre exatamente sete dias.')
-        out = dict(start=start.isoformat(), end=end.isoformat(), kind=kind)
+        out = dict(start=start.isoformat(), end=end.isoformat(), kind=kind, platform=platform)
         for field in ('total', *CHANNELS):
             out[field] = cents(d.get(field, 0))
         out['adjustment_note'] = clean(d.get('adjustment_note'))
@@ -135,7 +151,7 @@ def register_finance(app, db):
                         if values['start'] != existing['start'] or values['end'] != existing['end']:
                             raise ValueError('Mantenha a data original da venda histórica.')
                     else:
-                        overlap = con.execute('SELECT id FROM finance_sales WHERE deleted=0 AND start<=? AND end>=? AND id<>?', (values['end'], values['start'], item_id or -1)).fetchone()
+                        overlap = con.execute("SELECT id FROM finance_sales WHERE deleted=0 AND start<=? AND end>=? AND id<>? AND (platform='mixed' OR ?='mixed' OR platform=?)", (values['end'], values['start'], item_id or -1, values['platform'], values['platform'])).fetchone()
                         if overlap: raise ValueError('Já há vendas nesse período. Edite o lançamento existente para não contar duas vezes.')
                 if item_id:
                     con.execute(f"UPDATE {table} SET " + ','.join(k+'=?' for k in values) + ' WHERE id=?', (*values.values(), item_id))
