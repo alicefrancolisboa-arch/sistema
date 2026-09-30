@@ -1,8 +1,0 @@
-.gradle/
-local.properties
-*.jks
-*.keystore
-server/.env
-build/
-app/build/
-node_modules/

@@ -1,0 +1,16 @@
+services:
+  - type: web
+    name: tempo-de-crescer
+    runtime: node
+    plan: free
+    rootDir: server
+    buildCommand: node --check server.mjs
+    startCommand: node server.mjs
+    healthCheckPath: /health
+    envVars:
+      - key: NODE_VERSION
+        value: 24.19.0
+      - key: TURSO_DATABASE_URL
+        sync: false
+      - key: TURSO_AUTH_TOKEN
+        sync: false

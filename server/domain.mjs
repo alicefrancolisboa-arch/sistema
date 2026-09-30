@@ -1,0 +1,56 @@
+import {randomBytes,createHash} from 'node:crypto';
+const token=()=>randomBytes(32).toString('base64url');
+const id=()=>randomBytes(12).toString('hex');
+export const hash=x=>createHash('sha256').update(x).digest('hex');
+const fail=(message,status=400)=>{throw Object.assign(Error(message),{status});};
+export const day=(time=Date.now())=>new Intl.DateTimeFormat('en-CA',{timeZone:'America/Sao_Paulo',year:'numeric',month:'2-digit',day:'2-digit'}).format(time);
+function integer(v,min,max){return Number.isInteger(v)&&v>=min&&v<=max;}
+function name(v){if(typeof v!=='string'||!v.trim()||v.length>80)fail('Use um nome de 1 a 80 caracteres.');return v.trim();}
+export function validate(c){
+  if(!c||!integer(c.limit,1,1440)||typeof c.enabled!=='boolean'||typeof c.rest!=='boolean'||!integer(c.start,0,1439)||!integer(c.end,0,1439)||(c.rest&&c.start===c.end))fail('Regras de tempo inválidas.');
+  if(!Array.isArray(c.apps)||c.apps.length>300||c.apps.some(x=>typeof x!=='string'||!/^[a-zA-Z0-9_.]+$/.test(x)))fail('Lista de aplicativos inválida.');
+  if(!Array.isArray(c.tasks)||c.tasks.length>30||c.tasks.some(t=>!t||typeof t.id!=='string'||!/^[a-zA-Z0-9-]{1,80}$/.test(t.id)||typeof t.title!=='string'||!t.title.trim()||t.title.length>80||!integer(t.minutes,1,240))||new Set(c.tasks.map(t=>t.id)).size!==c.tasks.length)fail('Tarefas inválidas.');
+  return {limit:c.limit,enabled:c.enabled,rest:c.rest,start:c.start,end:c.end,apps:[...new Set(c.apps)],tasks:c.tasks.map(t=>({id:t.id,title:t.title.trim(),minutes:t.minutes}))};
+}
+export function operation(db,path,body,bearer,now=Date.now()){
+  db.tokens??={};db.children??={};db.families??={};db.codes??={};db.devices??={};
+  for(const [k,c]of Object.entries(db.codes))if(c.expires<now)delete db.codes[k];
+  let auth=db.tokens[hash(bearer||'')];const today=day(now);
+  function childFor(){if(!auth)fail('Conexão não autorizada.',401);const childId=auth.role==='parent'?(body.childId||db.families[auth.family].children[0]):db.devices[auth.device]?.child;const child=db.children[childId];if(!child)fail('Selecione uma criança.',404);if(auth.role==='parent'&&!db.families[auth.family].children.includes(childId))fail('Acesso negado.',403);return child;}
+  function admin(){if(!auth||!['parent','local'].includes(auth.role))fail('Somente o responsável pode fazer isso.',403);}
+  function state(c){if(c.day!==today){c.day=today;c.claims={};c.bonus=0;}const devices=c.devices.map(d=>db.devices[d]);const total=devices.reduce((a,d)=>a+(d.day===today?d.used||0:0),0);const own=auth?.device?db.devices[auth.device]:null;return {day:today,bonus:c.bonus,claims:c.claims,used:total,otherUsed:Math.max(0,total-(own?.day===today?own.used||0:0)),usageAllowed:devices.every(d=>d.usageAllowed),guardEnabled:devices.every(d=>d.guardEnabled),devices:devices.map(d=>({id:d.id,name:d.name,lastSeen:d.lastSeen||0,used:d.day===today?d.used||0:0,usageAllowed:!!d.usageAllowed,guardEnabled:!!d.guardEnabled}))};}
+  function payload(c){return {childId:c.id,name:c.name,config:c.config,state:state(c)};}
+  if(path==='/api/register'){
+    const config=validate(body.config);const child=id(),device=id(),deviceToken=token(),localToken=token(),code=randomBytes(5).toString('hex').toUpperCase();
+    db.children[child]={id:child,name:name(body.name||'Criança'),devices:[device],config,day:today,bonus:0,claims:{}};
+    db.devices[device]={id:device,child,name:name(body.deviceName||'Celular'),used:0};db.tokens[hash(deviceToken)]={role:'child',device};db.tokens[hash(localToken)]={role:'local',device};db.codes[hash(code)]={device,expires:now+600000};
+    return {token:deviceToken,localToken,code,childId:child};
+  }
+  if(path==='/api/code'){admin();if(auth.role!=='local')fail('Gere o código no aparelho da criança.');const device=db.devices[auth.device];if(db.children[device.child].family)fail('Este aparelho já está vinculado.');for(const[k,c]of Object.entries(db.codes))if(c.device===device.id)delete db.codes[k];const code=randomBytes(5).toString('hex').toUpperCase();db.codes[hash(code)]={device:device.id,expires:now+600000};return {code};}
+  if(path==='/api/pair'){
+    if(auth&&auth.role!=='parent')fail('Use o aparelho do responsável.',403);
+    const key=hash(String(body.code||'').toUpperCase()),code=db.codes[key];if(!code||code.expires<now)fail('Código inválido ou expirado. Gere outro no aparelho da criança.');
+    let parentToken;if(!auth){const family=id();parentToken=token();db.families[family]={children:[]};auth={role:'parent',family};db.tokens[hash(parentToken)]=auth;}
+    const family=db.families[auth.family],device=db.devices[code.device],old=db.children[device.child];if(old.family)fail('Este aparelho já foi vinculado.');
+    let c=old;if(body.childId){if(!family.children.includes(body.childId))fail('Criança não pertence a esta família.',403);c=db.children[body.childId];if(c.devices.length>=5)fail('Limite de cinco aparelhos por criança.');c.devices.push(device.id);device.child=c.id;delete db.children[old.id];}
+    else{if(family.children.length>=20)fail('Limite de 20 crianças.');c.name=name(body.name||c.name);family.children.push(c.id);c.family=auth.family;}
+    device.name=name(body.deviceName||device.name);delete db.codes[key];return {...payload(c),...(parentToken?{token:parentToken}:{})};
+  }
+  if(path==='/api/parent/list'){admin();if(auth.role!=='parent')fail('Use o modo responsável.');return {children:db.families[auth.family].children.map(cid=>{const c=db.children[cid];return {id:c.id,name:c.name,...payload(c)};})};}
+  const c=childFor();state(c);
+  if(path==='/api/parent/sync'){admin();return payload(c);}
+  if(path==='/api/child/sync'){
+    if(auth.role!=='child')fail('Use o aparelho da criança.',403);const d=db.devices[auth.device];if(!integer(body.used,0,172800000))fail('Tempo inválido.');if(body.day!==today)fail('Ajuste a data e o fuso do aparelho para São Paulo.');d.day=today;d.used=body.used;d.lastSeen=now;d.usageAllowed=body.usageAllowed===true;d.guardEnabled=body.guardEnabled===true;return payload(c);
+  }
+  if(path==='/api/parent/config'){admin();c.config=validate(body.config);return payload(c);}
+  if(path==='/api/parent/apps'){admin();c.config=validate({...c.config,apps:body.apps});return payload(c);}
+  if(path==='/api/parent/rename'){admin();c.name=name(body.name);return payload(c);}
+  if(path==='/api/child/claim'){
+    if(auth.role!=='child')fail('Use o aparelho da criança.',403);const t=c.config.tasks.find(t=>t.id===body.taskId);if(!t)fail('Tarefa não encontrada.',404);if(c.claims[t.id]!=='approved')c.claims[t.id]='pending';return payload(c);
+  }
+  if(path==='/api/parent/approve'||path==='/api/parent/reject'){
+    admin();const task=c.config.tasks.find(t=>t.id===body.taskId);if(!task)fail('Tarefa não encontrada.',404);if(c.claims[task.id]==='approved')return payload(c);if(c.claims[task.id]!=='pending')fail('A criança precisa concluir esta tarefa primeiro.');
+    if(path.endsWith('/approve')){c.bonus+=task.minutes;c.claims[task.id]='approved';}else c.claims[task.id]='rejected';return payload(c);
+  }
+  fail('Rota não encontrada.',404);
+}
