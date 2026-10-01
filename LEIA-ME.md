@@ -11,7 +11,7 @@ APK Android e painel de responsáveis para a família Borges Franco.
 1. Instale o mesmo APK nos celulares dos adultos e das crianças. Quem já instalou a 1.0 deve instalar esta 1.1 por cima, sem desinstalar.
 2. No aparelho da criança, escolha Criança. Entre em Responsável usando o PIN definido pelo usuário. Selecione os aplicativos, configure limite e descanso e ative acesso ao uso e acessibilidade.
 3. Gere o código em Conectar à distância. No celular do adulto, escolha Responsável, entre com o PIN e use Adicionar criança e aparelho. Repita para as cinco crianças.
-4. No PC, abra o painel e informe um código do aparelho da criança ou um convite gerado por um responsável já vinculado, junto com o PIN. O código é de uso único e vale dez minutos.
+4. No PC, abra o painel e entre somente com o PIN. Os menus ficam disponíveis mesmo sem crianças cadastradas. Em Aparelhos, adicione cada criança com o código gerado no celular dela (uso único, dez minutos). Selecione o perfil para configurar horas, tarefas e bônus. A família do painel é preservada entre acessos.
 5. Para outro adulto administrar a mesma família, no painel do primeiro responsável use Ajustes → Convidar outro responsável. No outro celular, use Entrar em família existente.
 
 ## Funções
@@ -21,6 +21,10 @@ Cada criança tem regras, tarefas e bônus separados. Mais de um aparelho pode c
 As tarefas têm nome e bônus configuráveis. A criança solicita a conclusão; o adulto aprova usando o PIN. Uma tarefa rende uma vez por dia. Os bônus expiram à meia-noite, no fuso de São Paulo.
 
 Em Ajustes, o adulto pode bloquear agora, liberar o bloqueio manual ou abrir Liberação especial. A liberação especial pode abranger todos os aplicativos ou apenas os escolhidos, por um período de até 1440 minutos ou até o adulto encerrar. Ela ignora limite, descanso e bloqueio manual somente nos aplicativos escolhidos. Quando expira ou é encerrada, voltam as regras anteriores. Bloquear agora cancela qualquer liberação especial existente.
+
+## Relatórios
+
+O menu Relatórios mostra o uso, limite, bônus e tarefas aprovadas de cada criança. Guarda até 30 dias registrados a partir desta atualização, sem inventar uso para dias sem sincronização.
 
 ## Atualizações pelo servidor
 

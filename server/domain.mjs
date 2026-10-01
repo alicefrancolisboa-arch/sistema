@@ -4,6 +4,13 @@ const id=()=>randomBytes(12).toString('hex');
 export const hash=x=>createHash('sha256').update(x).digest('hex');
 const fail=(message,status=400)=>{throw Object.assign(Error(message),{status});};
 export const day=(time=Date.now())=>new Intl.DateTimeFormat('en-CA',{timeZone:'America/Sao_Paulo',year:'numeric',month:'2-digit',day:'2-digit'}).format(time);
+// Called only after the server verifies the household PIN.
+export function loginFamily(db,bearer=''){
+  db.families??={};db.tokens??={};
+  if(!db.webFamily){const previous=db.tokens[hash(bearer)];const families=Object.keys(db.families);db.webFamily=previous?.role==='parent'?previous.family:families.length===1?families[0]:id();}
+  db.families[db.webFamily]??={children:[]};
+  const value=token();db.tokens[hash(value)]={role:'parent',family:db.webFamily};return {token:value};
+}
 function integer(v,min,max){return Number.isInteger(v)&&v>=min&&v<=max;}
 function name(v){if(typeof v!=='string'||!v.trim()||v.length>80)fail('Use um nome de 1 a 80 caracteres.');return v.trim();}
 export function validate(c){
@@ -19,8 +26,8 @@ export function operation(db,path,body,bearer,now=Date.now()){
   let auth=db.tokens[hash(bearer||'')];const today=day(now);
   function childFor(){if(!auth)fail('Conexão não autorizada.',401);const childId=auth.role==='parent'?(body.childId||db.families[auth.family].children[0]):db.devices[auth.device]?.child;const child=db.children[childId];if(!child)fail('Selecione uma criança.',404);if(auth.role==='parent'&&!db.families[auth.family].children.includes(childId))fail('Acesso negado.',403);return child;}
   function admin(){if(!auth||!['parent','local'].includes(auth.role))fail('Somente o responsável pode fazer isso.',403);}
-  function state(c){if(c.day!==today){c.day=today;c.claims={};c.bonus=0;}const devices=c.devices.map(d=>db.devices[d]);const total=devices.reduce((a,d)=>a+(d.day===today?d.used||0:0),0);const own=auth?.device?db.devices[auth.device]:null;return {day:today,bonus:c.bonus,claims:c.claims,used:total,otherUsed:Math.max(0,total-(own?.day===today?own.used||0:0)),usageAllowed:devices.every(d=>d.usageAllowed),guardEnabled:devices.every(d=>d.guardEnabled),devices:devices.map(d=>({id:d.id,name:d.name,lastSeen:d.lastSeen||0,used:d.day===today?d.used||0:0,usageAllowed:!!d.usageAllowed,guardEnabled:!!d.guardEnabled}))};}
-  function payload(c){return {childId:c.id,name:c.name,config:c.config,state:state(c)};}
+  function state(c){if(c.day!==today){c.history??=[];if(c.day)c.history.push({day:c.day,used:c.devices.reduce((sum,id)=>sum+(db.devices[id].day===c.day?db.devices[id].used||0:0),0),bonus:c.bonus||0,limit:c.config.limit,approved:Object.values(c.claims||{}).filter(v=>v==='approved').length});c.history=c.history.slice(-30);c.day=today;c.claims={};c.bonus=0;}const devices=c.devices.map(d=>db.devices[d]);const total=devices.reduce((a,d)=>a+(d.day===today?d.used||0:0),0);const own=auth?.device?db.devices[auth.device]:null;return {day:today,bonus:c.bonus,claims:c.claims,used:total,otherUsed:Math.max(0,total-(own?.day===today?own.used||0:0)),usageAllowed:devices.every(d=>d.usageAllowed),guardEnabled:devices.every(d=>d.guardEnabled),devices:devices.map(d=>({id:d.id,name:d.name,lastSeen:d.lastSeen||0,used:d.day===today?d.used||0:0,usageAllowed:!!d.usageAllowed,guardEnabled:!!d.guardEnabled}))};}
+  function payload(c){const current=state(c);return {childId:c.id,name:c.name,config:c.config,state:current,history:c.history||[]};}
   if(path==='/api/register'){
     const config=validate(body.config);const child=id(),device=id(),deviceToken=token(),localToken=token(),code=randomBytes(5).toString('hex').toUpperCase();
     db.children[child]={id:child,name:name(body.name||'Criança'),devices:[device],config,day:today,bonus:0,claims:{}};
@@ -40,6 +47,7 @@ export function operation(db,path,body,bearer,now=Date.now()){
   }
   if(path==='/api/parent/list'){admin();if(auth.role!=='parent')fail('Use o modo responsável.');return {children:db.families[auth.family].children.map(cid=>{const c=db.children[cid];return {id:c.id,name:c.name,...payload(c)};})};}
   if(path==='/api/parent/invite'){admin();if(auth.role!=='parent')fail('Convide pelo aparelho do responsável.',403);const code=randomBytes(5).toString('hex').toUpperCase();for(const[k,v]of Object.entries(db.codes))if(v.family===auth.family)delete db.codes[k];db.codes[hash(code)]={family:auth.family,expires:now+600000};return {code};}
+  if(path==='/api/parent/sync'&&auth?.role==='parent'&&!db.families[auth.family].children.length)return {empty:true,childId:'',name:'Minha família',config:{},state:{day:today,bonus:0,used:0,claims:{},devices:[]},history:[]};
   const c=childFor();state(c);
   if(path==='/api/parent/sync'){admin();return payload(c);}
   if(path==='/api/child/sync'){
