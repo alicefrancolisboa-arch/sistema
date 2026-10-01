@@ -1,0 +1,12 @@
+plugins { id 'com.android.application' }
+def signing = new Properties()
+def signingFile = rootProject.file('signing.properties')
+if (signingFile.exists()) signingFile.withInputStream { signing.load(it) }
+android {
+    namespace 'br.com.tempodecrescer'
+    compileSdk 35
+    defaultConfig { applicationId 'br.com.tempodecrescer'; minSdk 26; targetSdk 35; versionCode 2; versionName '1.1.0' }
+    compileOptions { sourceCompatibility JavaVersion.VERSION_1_8; targetCompatibility JavaVersion.VERSION_1_8 }
+    signingConfigs { release { if (signingFile.exists()) { storeFile rootProject.file('tempo-de-crescer.jks'); storePassword signing['password']; keyAlias 'tempo-de-crescer'; keyPassword signing['password'] } } }
+    buildTypes { release { signingConfig signingConfigs.release; debuggable false } }
+}

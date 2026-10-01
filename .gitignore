@@ -1,0 +1,13 @@
+.gradle/
+**/build/
+local.properties
+*.jks
+*.keystore
+signing.properties
+tests/classes/
+app/src/main/assets/bootstrap-pin.json
+reference-financas/
+*.env
+family-data.json*
+outputs/
+node_modules/

@@ -1,0 +1,6 @@
+<resources>
+    <style name="AppTheme" parent="android:style/Theme.Material.NoActionBar">
+        <item name="android:fontFamily">sans</item><item name="android:colorAccent">#B9F36B</item><item name="android:windowLightStatusBar">false</item><item name="android:statusBarColor">#061019</item><item name="android:navigationBarColor">#061019</item>
+    </style>
+    <string name="service_description">Controle parental visível. Identifica qual aplicativo está aberto e exibe uma tela de pausa nos aplicativos selecionados quando o limite diário ou o horário de descanso é atingido. Não lê mensagens, senhas ou conteúdo da tela. Os dados ficam neste aparelho. Você pode desativar o serviço nas configurações do Android.</string>
+</resources>
