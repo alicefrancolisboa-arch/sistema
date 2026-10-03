@@ -1,4 +1,4 @@
-# Tempo de Crescer — 1.1.0
+# Tempo de Crescer — 1.2.0
 
 APK Android e painel de responsáveis para a família Borges Franco.
 
@@ -58,3 +58,12 @@ A página web usa cookie HttpOnly/Secure/SameSite, pareamento de uso único e va
 ## Arquivos privados
 
 Nunca publicar tempo-de-crescer.jks, signing.properties, app/src/main/assets/bootstrap-pin.json ou arquivos de ambiente. O PIN não aparece em texto no projeto publicado. Preserve a chave de assinatura para futuras versões do APK e do painel.
+
+## Atualização 1.2
+
+Instale a versão 1.2 por cima nos aparelhos das crianças e dos responsáveis, sem desinstalar. A lista de apps usa os ícones reais do Android e permite Selecionar tudo/Desmarcar tudo, no aparelho e no painel. A lista enviada tem até 300 apps com tela inicial; apps essenciais ficam excluídos.
+
+O app em primeiro plano é enviado a cada aproximadamente 15 segundos quando a acessibilidade está ativa. O painel web atualiza as telas de acompanhamento a cada 15 segundos. Rede, Android e hospedagem podem atrasar esse intervalo. Após 90 segundos sem dado de atividade, o painel indica informação desatualizada. Não captura imagens da tela, mensagens ou conteúdo dos apps.
+
+Excluir criança pede confirmação, remove o perfil da lista e desativa suas regras na próxima sincronização dos aparelhos. Perfis excluídos podem ser restaurados; o controle fica pausado até o responsável revisar e reativar as regras. Um aparelho removido também pode gerar novo código e ser vinculado novamente.
+`nNo menu Aplicativos, escolha o perfil e marque a lista. Bloquear seleção e Aplicar limite substituem a lista controlada (desmarcados ficam livres). Liberar seleção cria uma liberação sem prazo apenas nos apps selecionados já controlados. As permissões são mantidas no Android.

@@ -10,12 +10,13 @@ import android.content.*;
 import android.graphics.Color;
 
 public class GuardService extends AccessibilityService {
-    Handler handler=new Handler();String active="";View overlay; long lastSync;boolean syncing;
+    Handler handler=new Handler();String active="";View overlay; long lastSync;boolean syncing;static volatile String foreground="";static volatile long observedAt;static volatile boolean foregroundBlocked;
     Runnable tick=new Runnable(){public void run(){check();handler.postDelayed(this,2000);}};
     @Override public void onServiceConnected(){handler.post(tick);}
     @Override public void onAccessibilityEvent(AccessibilityEvent e){if(e.getEventType()==AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED && e.getPackageName()!=null){String p=e.getPackageName().toString();if(!p.equals(getPackageName()))active=p;else if(overlay==null)active=p;check();}}
     void check(){Store s=new Store(this);if(s.parent()){hide();return;}
-        if(s.paired()&&!syncing&&System.currentTimeMillis()-lastSync>30000){syncing=true;lastSync=System.currentTimeMillis();Remote.sync(this,error->handler.post(()->syncing=false));}
+        long used=s.used(s.usage());boolean visible=((PowerManager)getSystemService(POWER_SERVICE)).isInteractive()&&!((KeyguardManager)getSystemService(KEYGUARD_SERVICE)).isKeyguardLocked();foreground=visible?active:"";observedAt=System.currentTimeMillis();foregroundBlocked=visible&&!s.reason(active,used).isEmpty();
+        if(s.paired()&&!syncing&&System.currentTimeMillis()-lastSync>15000){syncing=true;lastSync=System.currentTimeMillis();Remote.sync(this,error->handler.post(()->syncing=false));}
         boolean locked=((KeyguardManager)getSystemService(KEYGUARD_SERVICE)).isKeyguardLocked(); boolean awake=((PowerManager)getSystemService(POWER_SERVICE)).isInteractive();
         String reason=s.reason(active,s.used(s.usage()));if(reason.isEmpty()||locked||!awake){hide();return;}
         if(overlay!=null)return;
@@ -29,5 +30,5 @@ public class GuardService extends AccessibilityService {
     }
     void hide(){if(overlay!=null){try{((WindowManager)getSystemService(WINDOW_SERVICE)).removeView(overlay);}catch(Exception ignored){}overlay=null;}}
     @Override public void onInterrupt(){hide();}
-    @Override public void onDestroy(){handler.removeCallbacksAndMessages(null);hide();super.onDestroy();}
+    @Override public void onDestroy(){foreground="";observedAt=0;handler.removeCallbacksAndMessages(null);hide();super.onDestroy();}
 }

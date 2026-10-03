@@ -11,7 +11,7 @@ import java.security.cert.CertificateFactory;
 
 /** Only authenticated, data-only web UI bundles are accepted. No native code loading. */
 public final class BundleUpdates {
-    public static final int NATIVE_VERSION=2;
+    public static final int NATIVE_VERSION=3;
     private static final int MAX=2*1024*1024;
     static byte[] read(InputStream in)throws Exception {try(InputStream stream=in;ByteArrayOutputStream out=new ByteArrayOutputStream()){byte[] b=new byte[8192];int n;while((n=stream.read(b))!=-1){out.write(b,0,n);if(out.size()>MAX)throw new IOException("Atualização muito grande.");}return out.toByteArray();}}
     static JSONObject verify(Context context,byte[] bytes)throws Exception {

@@ -17,5 +17,6 @@ try{
  const pair=await call('pair',{pin,code:reg.body.code,name:'Ana'});assert.equal(pair.status,200);
  assert.equal((await call('web/snapshot')).body.name,'Ana');
  const second=await call('web/login',{pin},false);cookie=second.cookie.split(';')[0];assert.equal((await call('parent/list',{pin})).body.children.length,1);
+ for(let n=0;n<20;n++)assert.equal((await call('parent/list')).status,200);assert.equal((await call('parent/app-policy',{pin,apps:['app.game'],action:'block'})).status,200);
  console.log('HTTP: PIN errado rejeitado; sessão protegida; entrada sem aparelhos; vínculo posterior; família preservada em novo login.');
 }finally{child.kill();}

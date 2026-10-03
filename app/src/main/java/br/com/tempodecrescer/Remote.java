@@ -20,12 +20,15 @@ public final class Remote {
         c.setRequestProperty("Authorization","Bearer "+s.prefs.getString(privileged&&!s.parent()?"localToken":"token",""));
         if(privileged&&s.parent()&&!body.has("childId"))body.put("childId",s.prefs.getString("childId",""));
         try {try(OutputStream out=c.getOutputStream()){out.write(body.toString().getBytes("UTF-8"));}
-            int status=c.getResponseCode();InputStream in=status<400?c.getInputStream():c.getErrorStream();ByteArrayOutputStream out=new ByteArrayOutputStream();if(in!=null){try(InputStream stream=in){byte[] b=new byte[4096];int n;while((n=stream.read(b))!=-1){out.write(b,0,n);if(out.size()>1048576)throw new IOException("Resposta muito grande");}}}
+            int status=c.getResponseCode();InputStream in=status<400?c.getInputStream():c.getErrorStream();ByteArrayOutputStream out=new ByteArrayOutputStream();if(in!=null){try(InputStream stream=in){byte[] b=new byte[4096];int n;while((n=stream.read(b))!=-1){out.write(b,0,n);if(out.size()>8388608)throw new IOException("Resposta muito grande");}}}
             JSONObject result=new JSONObject(out.toString("UTF-8"));if(status>=400)throw new IOException(result.optString("error","Falha na conexão ("+status+")"));return result;
         } finally {c.disconnect();}
     }
     public static void sync(Context ctx,Done done){ IO.execute(()->{String error=null;try{Store s=new Store(ctx);JSONObject body=new JSONObject();
-        if(!s.parent()){body.put("used",s.used(s.usage())).put("day",Store.day()).put("usageAllowed",s.usageAllowed()).put("guardEnabled",s.guardEnabled());}
-        JSONObject r=call(s,s.parent()?"/api/parent/sync":"/api/child/sync",body);s.config(r.getJSONObject("config"));s.state(r.getJSONObject("state"));s.prefs.edit().putString("childId",r.optString("childId")).putString("childName",r.optString("name")).putLong("lastSync",System.currentTimeMillis()).putString("syncError","").apply();
+        if(!s.parent()){body.put("used",s.used(s.usage())).put("day",Store.day()).put("usageAllowed",s.usageAllowed()).put("guardEnabled",s.guardEnabled());
+          if(System.currentTimeMillis()-s.prefs.getLong("catalogSent",0)>600000)body.put("catalog",AppCatalog.list(ctx));
+          if(s.guardEnabled()&&System.currentTimeMillis()-GuardService.observedAt<10000){String pkg=GuardService.foreground;try{body.put("activity",pkg.isEmpty()?JSONObject.NULL:AppCatalog.app(ctx,pkg).put("blocked",GuardService.foregroundBlocked));}catch(Exception ignored){body.put("activity",JSONObject.NULL);}}
+}
+        JSONObject r=call(s,s.parent()?"/api/parent/sync":"/api/child/sync",body);if(body.has("catalog"))s.prefs.edit().putLong("catalogSent",System.currentTimeMillis()).apply();if(r.has("catalog"))s.prefs.edit().putString("catalog",r.getJSONArray("catalog").toString()).apply();s.config(r.getJSONObject("config"));s.state(r.getJSONObject("state"));s.prefs.edit().putString("childId",r.optString("childId")).putString("childName",r.optString("name")).putLong("lastSync",System.currentTimeMillis()).putString("syncError","").apply();
     }catch(Exception e){error=e.getMessage();new Store(ctx).prefs.edit().putString("syncError",error==null?"Falha de conexão":error).apply();} if(done!=null)done.done(error);}); }
 }
