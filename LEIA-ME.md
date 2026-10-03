@@ -1,4 +1,4 @@
-# Tempo de Crescer — 1.2.0
+# Tempo de Crescer — 1.2.1
 
 APK Android e painel de responsáveis para a família Borges Franco.
 
@@ -66,4 +66,8 @@ Instale a versão 1.2 por cima nos aparelhos das crianças e dos responsáveis, 
 O app em primeiro plano é enviado a cada aproximadamente 15 segundos quando a acessibilidade está ativa. O painel web atualiza as telas de acompanhamento a cada 15 segundos. Rede, Android e hospedagem podem atrasar esse intervalo. Após 90 segundos sem dado de atividade, o painel indica informação desatualizada. Não captura imagens da tela, mensagens ou conteúdo dos apps.
 
 Excluir criança pede confirmação, remove o perfil da lista e desativa suas regras na próxima sincronização dos aparelhos. Perfis excluídos podem ser restaurados; o controle fica pausado até o responsável revisar e reativar as regras. Um aparelho removido também pode gerar novo código e ser vinculado novamente.
-`nNo menu Aplicativos, escolha o perfil e marque a lista. Bloquear seleção e Aplicar limite substituem a lista controlada (desmarcados ficam livres). Liberar seleção cria uma liberação sem prazo apenas nos apps selecionados já controlados. As permissões são mantidas no Android.
+
+No menu Aplicativos, escolha o perfil e marque a lista. Bloquear seleção e Aplicar limite substituem a lista controlada (desmarcados ficam livres). Liberar seleção cria uma liberação sem prazo apenas nos apps selecionados já controlados. As permissões são mantidas no Android.
+
+## Correção 1.2.1
+A lista local mostra apps livres e controlados. O servidor mantém os apps já conhecidos mesmo antes da chegada do catálogo. Liberar seleção permite 15, 30, 60, 120 minutos ou até encerrar; após o prazo voltam as regras anteriores. O app permanece na lista para ser bloqueado novamente.
