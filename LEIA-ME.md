@@ -1,4 +1,4 @@
-# Tempo de Crescer — 1.3.0
+# Tempo de Crescer — 1.4.0
 
 APK Android e painel de responsáveis para a família Borges Franco.
 
@@ -75,3 +75,14 @@ A lista local mostra apps livres e controlados. O servidor mantém os apps já c
 ## Proteção contra desinstalação (1.3)
 
 Consulte PROTECAO-DESINSTALACAO.md. A área nativa do responsável indica se o aparelho foi configurado como device owner, confirma a política de bloqueio e permite encerrar o gerenciamento com PIN novamente e confirmação. Não há ativação ou redefinição automática. Requer configuração assistida do celular da criança; nenhum dispositivo estava conectado para testar.
+
+## Apps livres — versão 1.4.0
+
+No menu Aplicativos, selecione os apps e use Livre sem descontar tempo. Eles permanecem no catálogo, separados dos apps com controle de tempo. A alteração vale quando o aparelho recebe a configuração.
+
+A liberação temporária também não consome a cota enquanto estiver válida. O Android mantém um histórico local das regras do dia: encerrar a liberação não cobra novamente os intervalos que foram livres. O tempo anterior à liberação continua contado. A migração não reconstrói liberações históricas anteriores à versão 1.4.
+
+Instale o APK 1.4.0 por cima do anterior em todos os aparelhos das crianças. A interface continua atualizando pelo servidor; este ajuste exige atualização nativa da contagem. Não desinstale para atualizar.
+
+Validação: 38 testes do servidor, 22 verificações Java existentes, 13 verificações de contagem histórica, assembleRelease e lintRelease aprovados. Fluxo visual validado com perfil fictício. Sem teste em aparelho físico.
+
