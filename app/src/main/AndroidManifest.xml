@@ -6,6 +6,10 @@
     <application android:label="Tempo de Crescer" android:icon="@drawable/crest_icon" android:theme="@style/AppTheme" android:allowBackup="false" android:dataExtractionRules="@xml/backup_rules" android:supportsRtl="true">
         <activity android:name=".MainActivity" android:exported="true"><intent-filter><action android:name="android.intent.action.MAIN"/><category android:name="android.intent.category.LAUNCHER"/></intent-filter></activity>
         <activity android:name=".PanelActivity" android:exported="false" />
+        <receiver android:name=".FamilyAdminReceiver" android:permission="android.permission.BIND_DEVICE_ADMIN" android:exported="true" android:label="Tempo de Crescer — proteção dos responsáveis">
+            <meta-data android:name="android.app.device_admin" android:resource="@xml/device_admin" />
+            <intent-filter><action android:name="android.app.action.DEVICE_ADMIN_ENABLED" /></intent-filter>
+        </receiver>
         <service android:name=".GuardService" android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE" android:exported="true" android:label="Tempo de Crescer — controle de tempo">
             <intent-filter><action android:name="android.accessibilityservice.AccessibilityService"/></intent-filter>
             <meta-data android:name="android.accessibilityservice" android:resource="@xml/accessibility"/>

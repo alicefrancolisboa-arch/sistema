@@ -1,4 +1,4 @@
-# Tempo de Crescer — 1.2.1
+# Tempo de Crescer — 1.3.0
 
 APK Android e painel de responsáveis para a família Borges Franco.
 
@@ -49,7 +49,7 @@ A página web usa cookie HttpOnly/Secure/SameSite, pareamento de uso único e va
 - APK release assinado; compilação e lint aprovados, sem erros.
 - Painel web testado no navegador com cinco perfis fictícios, login por convite e PIN e liberação individual por prazo.
 - Não houve teste do bloqueio em aparelho físico: nenhum dispositivo estava conectado por ADB.
-- O aplicativo não impede desinstalação ou revogação das permissões do Android. Telefone, configurações do sistema e apps não selecionados continuam disponíveis.
+- Em instalação comum, o aplicativo não impede desinstalação ou revogação das permissões do Android. A versão 1.3 inclui preparação para proteção em aparelho gerenciado; a instalação sozinha não ativa essa proteção. Telefone, configurações do sistema e apps não selecionados continuam disponíveis.
 - Sem internet, valem as últimas regras recebidas; comandos remotos novos e o total de outros aparelhos aguardam sincronização.
 - No plano gratuito do Render, o serviço pode demorar para iniciar após inatividade e está sujeito à franquia compartilhada da conta.
 - Alterar o relógio do aparelho pode afetar a contagem local. Use data e fuso automáticos de São Paulo.
@@ -71,3 +71,7 @@ No menu Aplicativos, escolha o perfil e marque a lista. Bloquear seleção e Apl
 
 ## Correção 1.2.1
 A lista local mostra apps livres e controlados. O servidor mantém os apps já conhecidos mesmo antes da chegada do catálogo. Liberar seleção permite 15, 30, 60, 120 minutos ou até encerrar; após o prazo voltam as regras anteriores. O app permanece na lista para ser bloqueado novamente.
+
+## Proteção contra desinstalação (1.3)
+
+Consulte PROTECAO-DESINSTALACAO.md. A área nativa do responsável indica se o aparelho foi configurado como device owner, confirma a política de bloqueio e permite encerrar o gerenciamento com PIN novamente e confirmação. Não há ativação ou redefinição automática. Requer configuração assistida do celular da criança; nenhum dispositivo estava conectado para testar.
