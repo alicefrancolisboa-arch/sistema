@@ -15,10 +15,12 @@ import org.json.*;
 import java.util.*;
 
 public class MainActivity extends Activity {
-    Store s;LinearLayout page,body,nav;int tab=0;boolean unlocked=false;long unlockedAt;Handler handler=new Handler();boolean loading;
+    Store s;LinearLayout page,body,nav;int tab=0;boolean unlocked=false;long unlockedAt;Handler handler=new Handler();boolean loading;volatile boolean visible;volatile long watchGeneration;
     int ink=Color.rgb(244,249,255),green=Color.rgb(185,243,107),muted=Color.rgb(142,169,189);
     @Override public void onCreate(Bundle b){super.onCreate(b);s=new Store(this);if(getIntent().getBooleanExtra("tasks",false))tab=1;render();if(s.paired()&&!getIntent().getBooleanExtra("native",false)&&b==null)startActivity(new Intent(this,PanelActivity.class));}
-    @Override protected void onResume(){super.onResume();if(s!=null){if(System.currentTimeMillis()-unlockedAt>300000)unlocked=false;render();}}
+    @Override protected void onResume(){super.onResume();if(s!=null){if(System.currentTimeMillis()-unlockedAt>300000)unlocked=false;render();visible=true;watchNative();}}
+    @Override protected void onPause(){visible=false;watchGeneration++;super.onPause();}
+    void watchNative(){if(!s.parent()||!s.paired())return;final long generation=++watchGeneration;Remote.LIVE.execute(()->{String cursor="";while(visible&&generation==watchGeneration&&s.parent()){try{JSONObject r=Remote.call(s,"/api/parent/watch",json("cursor",cursor));cursor=r.optString("cursor");if(visible&&generation==watchGeneration)runOnUiThread(()->{if(!unlocked&&!loading)Remote.sync(this,error->runOnUiThread(()->{if(visible&&!unlocked&&!loading)render();}));});}catch(Exception e){try{Thread.sleep(5000);}catch(InterruptedException stop){Thread.currentThread().interrupt();return;}}}});}
     @Override protected void onStop(){unlocked=false;super.onStop();}
     int dp(int n){return (int)(n*getResources().getDisplayMetrics().density);}
     LinearLayout column(){LinearLayout l=new LinearLayout(this);l.setOrientation(LinearLayout.VERTICAL);return l;}
@@ -40,7 +42,7 @@ public class MainActivity extends Activity {
         nav=new LinearLayout(this);String[] names={"Hoje","Tarefas","Responsável"};for(int i=0;i<3;i++){final int n=i;Button b=new Button(this);b.setText(names[i]);b.setAllCaps(false);b.setTextSize(12);b.setTextColor(tab==i?green:muted);nav.addView(b,new LinearLayout.LayoutParams(0,dp(54),1));b.setOnClickListener(v->{tab=n;render();});}page.addView(nav);
     }
     void welcome(){LinearLayout c=card();heading(c,"Mais equilíbrio, juntos.",25);text(c,"Escolha onde este aplicativo está sendo instalado. No aparelho da criança, configure os aplicativos e as permissões. No seu aparelho, acompanhe e aprove os bônus à distância.",17,muted);
-        button(c,"Este é o celular da criança",()->chooseRole("child"));button(c,"Este é o celular do responsável",()->chooseRole("parent"));}
+        button(c,"Entrar com senha e escolher o aparelho",()->gate(()->{tab=2;render();}));}
     void chooseRole(String role){s.prefs.edit().putString("role",role).putBoolean("roleChosen",true).apply();tab=2;render();}
     String duration(long ms){long min=Math.max(0,ms/60000);return min>=60?(min/60)+"h "+(min%60)+"min":min+" min";}
     void today(){if(s.paired())button(body,"Abrir painel atualizado",()->startActivity(new Intent(this,PanelActivity.class)));if(s.parent())familyHeader();JSONObject state=s.state(),config=s.config();long used=s.parent()?(Store.day().equals(state.optString("day"))?state.optLong("used"):0):s.used(s.usage())+s.otherUsed();int total=config.optInt("limit",120)+s.bonus();
@@ -63,7 +65,7 @@ public class MainActivity extends Activity {
         if(System.currentTimeMillis()<s.prefs.getLong("pinWait",0)){toast("Aguarde um minuto antes de tentar novamente.");return;}
         LinearLayout box=column();box.setPadding(dp(24),dp(8),dp(24),0);boolean create=!s.hasPin();EditText pin=input(box,create?"Crie um PIN de 4 a 8 números":"PIN do responsável","",true);pin.setInputType(InputType.TYPE_CLASS_NUMBER|InputType.TYPE_NUMBER_VARIATION_PASSWORD);EditText confirm=create?input(box,"Repita o PIN","",true):null;if(confirm!=null)confirm.setInputType(InputType.TYPE_CLASS_NUMBER|InputType.TYPE_NUMBER_VARIATION_PASSWORD);
         AlertDialog d=new AlertDialog.Builder(this).setTitle(create?"Proteja os ajustes":"Área do responsável").setView(box).setNegativeButton("Cancelar",null).setPositiveButton("Continuar",null).create();d.setOnShowListener(v->d.getButton(-1).setOnClickListener(w->{String value=pin.getText().toString();try{if(create){if(!value.matches("[0-9]{4,8}")||!value.equals(confirm.getText().toString())){toast("Digite o mesmo PIN de 4 a 8 números nos dois campos.");return;}s.setPin(value);}else if(!s.checkPin(value)){int fails=s.prefs.getInt("pinFails",0)+1;s.prefs.edit().putInt("pinFails",fails%5).putLong("pinWait",fails>=5?System.currentTimeMillis()+60000:0).apply();toast("PIN incorreto.");d.dismiss();return;}
-        s.prefs.edit().putInt("pinFails",0).putLong("pinWait",0).apply();unlocked=true;unlockedAt=System.currentTimeMillis();d.dismiss();action.run();}catch(Exception e){toast("Não foi possível salvar o PIN.");}}));d.show();}
+        s.prefs.edit().putInt("pinFails",0).putLong("pinWait",0).apply();unlocked=true;unlockedAt=System.currentTimeMillis();d.dismiss();DeviceMode.choose(this,s,value,action,()->{unlocked=false;render();});}catch(Exception e){toast("Não foi possível salvar o PIN.");}}));d.show();}
     void tasks(){if(s.parent())familyHeader();LinearLayout intro=card();heading(intro,"Pequenos passos, mais tempo",20);text(intro,"Conclua uma tarefa e peça a aprovação do responsável. Cada tarefa pode render um bônus por dia. Os bônus expiram à meia-noite e não liberam o horário de descanso.",15,muted);
         JSONArray tasks=s.config().optJSONArray("tasks");JSONObject state=s.state();JSONObject claims=Store.day().equals(state.optString("day"))?state.optJSONObject("claims"):null;
         if(tasks==null||tasks.length()==0)text(intro,"O responsável ainda não cadastrou tarefas.",16,green);

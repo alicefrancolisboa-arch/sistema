@@ -29,6 +29,29 @@ export function operation(db,path,body,bearer,now=Date.now()){
   function admin(){if(!auth||!['parent','local'].includes(auth.role))fail('Somente o responsável pode fazer isso.',403);}
   function state(c){if(c.day!==today){c.history??=[];if(c.day)c.history.push({day:c.day,used:c.devices.reduce((sum,id)=>sum+(db.devices[id].day===c.day?db.devices[id].used||0:0),0),bonus:c.bonus||0,limit:c.config.limit,approved:Object.values(c.claims||{}).filter(v=>v==='approved').length});c.history=c.history.slice(-30);c.day=today;c.claims={};c.bonus=0;}const devices=c.devices.map(d=>db.devices[d]);const total=devices.reduce((a,d)=>a+(d.day===today?d.used||0:0),0);const own=auth?.device?db.devices[auth.device]:null;return {day:today,bonus:c.bonus,claims:c.claims,used:total,otherUsed:Math.max(0,total-(own?.day===today?own.used||0:0)),usageAllowed:devices.every(d=>d.usageAllowed),guardEnabled:devices.every(d=>d.guardEnabled),devices:devices.map(d=>({id:d.id,name:d.name,lastSeen:d.lastSeen||0,used:d.day===today?d.used||0:0,usageAllowed:!!d.usageAllowed,guardEnabled:!!d.guardEnabled,activity:d.activity||null}))};}
   function payload(c,includeCatalog=true){const current=state(c),apps=new Map();if(includeCatalog)for(const a of c.knownApps||[])apps.set(a.package,a);if(includeCatalog)for(const id of c.devices)for(const a of db.devices[id].catalog||[])apps.set(a.package,a);return {childId:c.id,name:c.name,config:c.config,state:current,history:c.history||[],...(includeCatalog?{catalog:[...apps.values()]}:{})};}
+  // The HTTP layer verifies the family PIN before this operation.
+  if(path==='/api/device/mode'){
+    if(!auth||!['parent','child','local'].includes(auth.role))fail('Conexão não autorizada.',401);
+    if(!['parent','child'].includes(body.mode))fail('Escolha criança ou responsável.');
+    const family=auth.role==='parent'?auth.family:db.children[db.devices[auth.device]?.child]?.family;
+    if(!family||!db.families[family])fail('Vincule este aparelho à família antes de trocar o modo.');
+    if(body.mode==='parent'){
+      const parentToken=auth.role==='parent'?bearer:token();
+      const c=childFor();db.tokens[hash(parentToken)]={role:'parent',family};auth=db.tokens[hash(parentToken)];
+      return {...payload(c),token:parentToken,role:'parent'};
+    }
+    const saved=db.tokens[hash(body.deviceToken||'')];
+    if(saved?.role==='child'&&db.children[db.devices[saved.device]?.child]?.family===family){
+      const c=db.children[db.devices[saved.device].child];auth=saved;
+      return {...payload(c),token:body.deviceToken,role:'child'};
+    }
+    if(auth.role!=='parent')return {...payload(childFor()),token:bearer,role:'child'};
+    const c=childFor();if(c.devices.length>=5)fail('Limite de cinco aparelhos por criança.');
+    const device=id(),deviceToken=token(),localToken=token();
+    db.devices[device]={id:device,child:c.id,name:name(body.deviceName||'Celular'),used:0};c.devices.push(device);
+    db.tokens[hash(deviceToken)]={role:'child',device};db.tokens[hash(localToken)]={role:'local',device};auth=db.tokens[hash(deviceToken)];
+    return {...payload(c),token:deviceToken,localToken,role:'child'};
+  }
   if(path==='/api/register'){
     const config=validate(body.config);const child=id(),device=id(),deviceToken=token(),localToken=token(),code=randomBytes(5).toString('hex').toUpperCase();
     db.children[child]={id:child,name:name(body.name||'Criança'),devices:[device],config,day:today,bonus:0,claims:{}};

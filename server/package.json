@@ -1,1 +1,1 @@
-{"name":"tempo-de-crescer","version":"1.0.0","private":true,"type":"module","scripts":{"start":"node server.mjs","test":"node --test test.mjs storage.test.mjs"},"engines":{"node":">=22"}}
+{"name":"tempo-de-crescer","version":"1.0.0","private":true,"type":"module","scripts":{"start":"node server.mjs","test":"node --test test.mjs storage.test.mjs live.test.mjs live-http.test.mjs"},"engines":{"node":">=22"}}

@@ -7,6 +7,7 @@ import java.io.*;
 import java.util.concurrent.*;
 
 public final class Remote {
+    public static final ExecutorService LIVE=Executors.newCachedThreadPool();
     public static final ExecutorService IO=Executors.newSingleThreadExecutor();
     // Filled with the verified deployment URL before delivery when hosting is available.
     public static final String DEFAULT_URL="https://tempo-de-crescer.alwaysdata.net";
