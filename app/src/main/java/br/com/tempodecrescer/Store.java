@@ -15,7 +15,7 @@ import android.util.Base64;
 public final class Store {
     public final SharedPreferences prefs;
     final Context ctx;
-    public Store(Context c) { ctx=c; prefs=c.getSharedPreferences("family",0);if(prefs.getInt("pinPolicy",0)<2)try{JSONObject pin=new JSONObject(new String(BundleUpdates.read(c.getAssets().open("bootstrap-pin.json")),"UTF-8"));prefs.edit().putString("pinHash",pin.getString("hash")).putString("pinSalt",pin.getString("salt")).putInt("pinPolicy",2).apply();}catch(Exception ignored){} }
+    public Store(Context c) { ctx=c; prefs=c.getSharedPreferences("family",0);Remote.migrateServer(prefs);if(prefs.getInt("pinPolicy",0)<2)try{JSONObject pin=new JSONObject(new String(BundleUpdates.read(c.getAssets().open("bootstrap-pin.json")),"UTF-8"));prefs.edit().putString("pinHash",pin.getString("hash")).putString("pinSalt",pin.getString("salt")).putInt("pinPolicy",2).apply();}catch(Exception ignored){} }
     public JSONObject config() { try { return new JSONObject(prefs.getString("config", "{\"limit\":120,\"enabled\":true,\"rest\":false,\"start\":1260,\"end\":420,\"apps\":[],\"tasks\":[]}")); } catch(Exception e) { return new JSONObject(); } }
     public void config(JSONObject obj) { synchronized(Store.class){try{recordMetering(obj);}catch(Exception ignored){}prefs.edit().putString("config",obj.toString()).apply();} }
     private long lastMetered;

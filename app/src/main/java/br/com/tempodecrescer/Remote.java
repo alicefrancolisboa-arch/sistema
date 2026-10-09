@@ -9,7 +9,15 @@ import java.util.concurrent.*;
 public final class Remote {
     public static final ExecutorService IO=Executors.newSingleThreadExecutor();
     // Filled with the verified deployment URL before delivery when hosting is available.
-    public static final String DEFAULT_URL="https://tempo-de-crescer.onrender.com";
+    public static final String DEFAULT_URL="https://tempo-de-crescer.alwaysdata.net";
+    static void migrateServer(android.content.SharedPreferences prefs) {
+        if(prefs.getInt("serverMigration",0)>=1)return;
+        String previous=prefs.getString("server","").trim().replaceAll("/+$","");
+        android.content.SharedPreferences.Editor edit=prefs.edit().putInt("serverMigration",1);
+        if(previous.isEmpty()||previous.equals("https://tempo-de-crescer.onrender.com"))
+            edit.putString("server",DEFAULT_URL);
+        edit.apply();
+    }
     public interface Done {void done(String error);}
     public static JSONObject call(Store s,String path,JSONObject body)throws Exception {
         String base=s.prefs.getString("server",DEFAULT_URL).trim();
