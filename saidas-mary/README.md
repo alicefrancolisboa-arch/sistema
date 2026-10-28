@@ -36,3 +36,15 @@ Baixe `dist/Saidas-Mary.apk` ou `/baixar-apk` no novo servidor. A versão 1.1.1 
 Node 24: `npm ci --ignore-scripts` e `npm test`. A suíte cobre as regras financeiras, revisão e repetição de fotos, autenticação e armazenamento remoto com falhas e concorrência simuladas. A conexão real com Turso deve ser validada após cadastrar o token no Render.
 
 Sem STORAGE_DRIVER=turso, o desenvolvimento local continua usando SQLite. Configure .env a partir de .env.example. Não publique .env, tokens, senhas, bancos ou backups.
+
+## Contingência Cloudflare
+
+`wrangler.jsonc` e `worker.mjs` publicam a mesma aplicação no Cloudflare Workers,
+usando o mesmo banco Turso do Render. Configure `TURSO_AUTH_TOKEN`,
+`GEMINI_API_KEY` e `APP_PASSWORD` como secrets do Worker. O endereço do banco,
+o usuário e o modelo ficam nas variáveis não secretas do manifesto. Assim, as
+duas hospedagens enxergam os mesmos clientes, folhas, vendas e pagamentos.
+
+Valide antes de publicar com `wrangler deploy --dry-run`. Depois da primeira
+publicação, use o endereço Cloudflare no site instalado e no APK para que a
+indisponibilidade do Render não interrompa o aplicativo.
