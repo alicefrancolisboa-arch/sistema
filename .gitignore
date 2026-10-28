@@ -1,0 +1,6 @@
+aloha-casa-do-acai/.wrangler/
+aloha-casa-do-acai/.wrangler-dry-run/
+aloha-casa-do-acai/.venv-workers/
+aloha-casa-do-acai/python_modules/
+aloha-casa-do-acai/pylock.toml
+aloha-casa-do-acai/uv.lock

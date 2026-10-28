@@ -32,3 +32,14 @@ A inicializacao aplica somente migracoes aditivas. A limpeza historica de
 Validacao: `python -m unittest discover -s tests -q`. Antes de publicar, guardar
 uma copia do estado remoto e dos registros dos dois enderecos; depois verificar
 um lancamento de teste entre os enderecos e apos reiniciar o servico.
+
+## Contingência Cloudflare
+
+`worker.py`, `wrangler.jsonc` e `pyproject.toml` permitem publicar o Flask no
+Cloudflare Workers com o mesmo banco Turso do Render. Cadastre `APP_PASSWORD`,
+`TURSO_DATABASE_URL`, `TURSO_AUTH_TOKEN` e `GEMINI_API_KEY` como secrets no
+Cloudflare. Não copie essas chaves para o GitHub.
+
+O Worker serve as telas estáticas no Cloudflare e executa todas as APIs pelo
+Flask. Como os dois servidores usam o mesmo snapshot Turso, lista de compras,
+estoque, notas, vendas e financeiro permanecem iguais no computador e no app.
